@@ -1,0 +1,24 @@
+[tool.poetry]
+name = "scbs"
+version = "0.1.0"
+description = ""
+authors = ["Lukas Kremer <L-Kremer@web.de>"]
+
+[tool.poetry.dependencies]
+python = "^3.8"
+click = "^7.1.2"
+numpy = "^1.20.1"
+scipy = "^1.6.1"
+pandas = "^1.2.3"
+statsmodels = "^0.12.2"
+click-help-colors = "^0.9"
+
+[tool.poetry.dev-dependencies]
+pytest = "^5.2"
+
+[build-system]
+requires = ["poetry-core>=1.0.0"]
+build-backend = "poetry.core.masonry.api"
+
+[tool.poetry.scripts]
+scbs = "scbs.cli:cli"

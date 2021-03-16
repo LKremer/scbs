@@ -1,0 +1,2 @@
+{'regions': <_io.TextIOWrapper name='/mnt/o_drive/Lukas/resources/mouse_genome/TSS/Mus_musculus.GRCm38.102_TSS.bed' mode='r' encoding='UTF-8'>, 'data_dir': '/mnt/o_drive/Lukas/20-11-06_scNMT/DNA/05_sparse-matrix/CpG_filtered/', 'output': <_io.TextIOWrapper name='<stdout>' encoding='utf-8'>, 'width': 4000, 'strand_column': None, 'label': None}
+starting script at 2021-03-12 17:35:09.524611.
