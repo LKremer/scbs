@@ -30,8 +30,10 @@ def _iter_bed(file_obj, strand_col_i=None):
             elif strand_val == "+" or strand_val == "1":
                 is_rev_strand = False
             else:
-                raise Exception(f"Invalid strand column value '{strand_val}'. "
-                                 "Should be '+', '-', '1', or '-1'.")
+                raise Exception(
+                    f"Invalid strand column value '{strand_val}'. "
+                    "Should be '+', '-', '1', or '-1'."
+                )
         # yield chrom, start, end, and whether the feature is on the minus strand
         yield values[0], int(values[1]), int(values[2]), is_rev_strand
 
@@ -170,7 +172,7 @@ def make_profile(data_dir, regions, output, width, strand_column, label):
         n_meth_global = n_meth_global + np.flipud(n_meth_global_rev)
         n_non_na_global = n_non_na_global + np.flipud(n_non_na_global_rev)
 
-    secho(f"\nSuccessfully profiled {n_regions} regions." ,fg="green")
+    secho(f"\nSuccessfully profiled {n_regions} regions.", fg="green")
     echo(
         f"{n_empty_regions} of these regions "
         f"({np.divide(n_empty_regions, n_regions):.2%}) "
@@ -179,14 +181,14 @@ def make_profile(data_dir, regions, output, width, strand_column, label):
 
     if unknown_chroms:
         secho("\nWarning:", fg="red")
-        echo("\nWarning: The following chromosomes are present in "
+        echo(
+            "\nWarning: The following chromosomes are present in "
             f"'{os.splitext(_get_filepath(regions))}' but not in "
-            f"'{_get_filepath(data_dir)}':")
-        for uk in sorted(unknown_chroms):
-            echo(uk)
+            f"'{_get_filepath(data_dir)}':"
+        )
+        for uc in sorted(unknown_chroms):
+            echo(uc)
 
     # write final output file of binned methylation fractions
-    write_profile(
-        output, n_meth_global, n_non_na_global, cell_names, extend_by, label
-    )
+    write_profile(output, n_meth_global, n_non_na_global, cell_names, extend_by, label)
     return
