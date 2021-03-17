@@ -1,7 +1,7 @@
 import click
 from click import echo, secho, style
 from datetime import datetime, timedelta
-from scbs.scbs import make_profile, _get_filepath
+from scbs.scbs import _get_filepath, profile, matrix
 from click_help_colors import HelpColorsGroup, HelpColorsCommand
 
 
@@ -26,7 +26,7 @@ class Timer(object):
 def _print_kwargs(kwargs):
     echo("\nCommand line arguments:")
     for arg, value in kwargs.items():
-        if not value is None:
+        if value is not None:
             value_fmt = style(str(_get_filepath(value)), fg="blue")
             echo(f"{arg: >15}: {value_fmt}")
     echo()
@@ -47,11 +47,12 @@ def _print_kwargs(kwargs):
         {style("-", fg="blue")} instead of a file path.
         """,
 )
+@click.version_option()
 def cli():
     pass
 
 
-@cli.command()
+@click.command()
 @click.argument("cov_file_paths", nargs=-1, required=True, type=click.File())
 @click.option("-o", "--output-dir", required=True, type=click.Path(), show_default=True)
 @click.option("--format", default=(1, 2, 5, 6), nargs=4, show_default=True)
@@ -64,7 +65,7 @@ def test(**kwargs):
         echo(f"reading {f} ...")
 
 
-@cli.command(
+@click.command(
     help=f"""
     Gathers single cell methylation data from multiple input files
     (one per cell) and creates a sparse matrix (position x cell) in CSR
@@ -79,29 +80,38 @@ def test(**kwargs):
     """,
     short_help="First step: Collect and store sc-methylation data for quick access",
 )
-@click.argument("input_files", type=click.File("r"), nargs=-1)
+@click.argument("input-files", type=click.File("r"), nargs=-1)
 @click.argument(
     "data-dir",
-    type=click.Path(exists=True, dir_okay=True, file_okay=False, writable=True),
+    type=click.Path(dir_okay=True, file_okay=False, writable=True),
 )
-@click.option("--format", default=(1, 2, 5, 6), nargs=4, help="""
+@click.option(
+    "--input-format",
+    default=(1, 2, 5, 6),
+    nargs=4,
+    metavar="<INT INT INT INT>",
+    help="""
     Specify the format of the input files using four numbers.
     Numbers denote in which column the chromosome name, genomic position,
     methylated counts and unmethylated counts are stored; e.g. the
     default '--format 1 2 5 6' (Bismark's '.cov' format) denotes that the
     first column (1-indexed) contains the chromosome name, the 5th column
-    contains the methylated counts etc.""")
-@click.option("--header", is_flag=True,
+    contains the methylated counts etc.""",
+)
+@click.option(
+    "--header",
+    is_flag=True,
     help="Use this when input files have a column header [default: off, not "
-    "required when using Bismark files]")
-def matrix(**kwargs):
+    "required when using Bismark files]",
+)
+def matrix_cli(**kwargs):
     timer = Timer(label="matrix")
     _print_kwargs(kwargs)
-    make_profile(**kwargs)
+    matrix(**kwargs)
     timer.stop()
 
 
-@cli.command(
+@click.command(
     help=f"""
     From single cell methylation or NOMe-seq data,
     calculates the average methylation profile of a set of
@@ -130,6 +140,7 @@ def matrix(**kwargs):
     default=4000,
     show_default=True,
     type=click.IntRange(min=1, max=None),
+    metavar="INTEGER",
     help="The total width of the profile plot in bp. "
     "The center of all bed regions will be "
     "extended in both directions by half of this amount. "
@@ -139,6 +150,7 @@ def matrix(**kwargs):
 @click.option(
     "--strand-column",
     type=click.IntRange(min=1, max=None),
+    metavar="INTEGER",
     help="The bed column number (1-indexed) denoting "
     "the DNA strand of the region [optional].",
 )
@@ -149,15 +161,15 @@ def matrix(**kwargs):
     "useful to give each output a unique label when "
     "you want to concatenate multiple outputs [optional].",
 )
-def profile(**kwargs):
+def profile_cli(**kwargs):
     timer = Timer(label="profile")
     _print_kwargs(kwargs)
-    make_profile(**kwargs)
+    profile(**kwargs)
     timer.stop()
 
 
 # CLI template:
-@cli.command(
+@click.command(
     help=f"""
     Blabla
 
@@ -174,9 +186,38 @@ def profile(**kwargs):
 def template(**kwargs):
     timer = Timer(label="template")
     _print_kwargs(kwargs)
-    make_profile(**kwargs)
+    print(**kwargs)
     timer.stop()
 
 
-cli.add_command(matrix)
-cli.add_command(profile)
+# CLI template:
+@click.command(
+    help=f"""
+    Blabla
+
+    {style("INPUT", fg="green")} blabla
+
+    {style("OUTPUT", fg="green")} blabla
+    """,
+    short_help="template for dev",
+)
+@click.argument("input", type=click.File("rb"))
+@click.option("--header", is_flag=True)
+def gzip(**kwargs):
+    timer = Timer(label="gzip")
+    _print_kwargs(kwargs)
+    if kwargs["input"].name.endswith(".gz"):
+        lines = gzip.decompress(kwargs["input"].read()).decode().split("\n")
+        for line in lines[1:]:
+            print("---")
+            print(line)
+    else:
+        if kwargs["header"]:
+            kwargs["input"].readline()
+        for line in kwargs["input"]:
+            print(line.decode().strip())
+    timer.stop()
+
+
+cli.add_command(matrix_cli, name="matrix")
+cli.add_command(profile_cli, name="profile")

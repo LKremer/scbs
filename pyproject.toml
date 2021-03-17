@@ -1,8 +1,8 @@
 [tool.poetry]
 name = "scbs"
 version = "0.1.0"
-description = ""
-authors = ["Lukas Kremer <L-Kremer@web.de>"]
+description = "command line utility to work with single cell methylation data"
+authors = ["Lukas PM Kremer <L-Kremer@web.de>"]
 
 [tool.poetry.dependencies]
 python = "^3.8"
@@ -16,6 +16,7 @@ click-help-colors = "^0.9"
 [tool.poetry.dev-dependencies]
 pytest = "^5.2"
 black = "^20.8b1"
+flake8 = "^3.9.0"
 
 [build-system]
 requires = ["poetry-core>=1.0.0"]

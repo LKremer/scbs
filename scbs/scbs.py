@@ -1,10 +1,8 @@
 from __future__ import print_function, division
-import argparse
-import sys
-import datetime
-import os.path
-import numpy as np
+import os
+import gzip
 import pandas as pd
+import numpy as np
 import scipy.sparse as sp_sparse
 from statsmodels.stats.proportion import proportion_confint
 from click import echo, secho, style
@@ -12,6 +10,8 @@ from click import echo, secho, style
 
 def _get_filepath(f):
     """ returns the path of a file handle, if needed """
+    if type(f) is tuple and hasattr(f[0], "name"):
+        return f"{f[0].name} and {len(f) - 1} more files"
     return f.name if hasattr(f, "name") else f
 
 
@@ -38,7 +38,7 @@ def _iter_bed(file_obj, strand_col_i=None):
         yield values[0], int(values[1]), int(values[2]), is_rev_strand
 
 
-def redefine_bed_regions(start, end, extend_by):
+def _redefine_bed_regions(start, end, extend_by):
     """
     truncates or extend_bys a region to match the desired length
     """
@@ -48,7 +48,7 @@ def redefine_bed_regions(start, end, extend_by):
     return new_start, new_end
 
 
-def write_profile(
+def _write_profile(
     output_file, n_meth_global, n_non_na_global, cell_names, extend_by, add_column
 ):
     """
@@ -91,7 +91,10 @@ def write_profile(
     return
 
 
-def make_profile(data_dir, regions, output, width, strand_column, label):
+def profile(data_dir, regions, output, width, strand_column, label):
+    """
+    see 'scbs profile --help'
+    """
     cell_names = []
     with open(os.path.join(data_dir, "column_header.txt"), "r") as col_heads:
         for line in col_heads:
@@ -103,7 +106,6 @@ def make_profile(data_dir, regions, output, width, strand_column, label):
     observed_chroms = set()
     unknown_chroms = set()
     prev_chrom = None
-    swapped = False
     for bed_entries in _iter_bed(regions, strand_col_i=strand_column):
         chrom, start, end, is_rev_strand = bed_entries
         if chrom in unknown_chroms:
@@ -124,8 +126,9 @@ def make_profile(data_dir, regions, output, width, strand_column, label):
             if prev_chrom is None:
                 # this happens at the very start, i.e. on the first chromosome
                 n_cells = mat.shape[1]
-                # two empty matrices will collect the number of methylated CpGs and the
-                # total CpG count for every position of every cell, summed over all regions
+                # two empty matrices will collect the number of methylated
+                # CpGs and the total CpG count for every position of every
+                # cell,summed over all regions
                 n_meth_global = np.zeros((extend_by * 2, n_cells), dtype=np.uint32)
                 n_non_na_global = np.zeros((extend_by * 2, n_cells), dtype=np.uint32)
                 if strand_column:
@@ -138,12 +141,12 @@ def make_profile(data_dir, regions, output, width, strand_column, label):
             prev_chrom = chrom
 
         # adding half width on both sides of the center of the region
-        new_start, new_end = redefine_bed_regions(start, end, extend_by)
+        new_start, new_end = _redefine_bed_regions(start, end, extend_by)
 
         region = mat[new_start:new_end, :]
         if region.shape[0] != extend_by * 2:
             echo(
-                f"  skipping region {chrom}:{start}-{end} for now... "
+                f"skipping region {chrom}:{start}-{end} for now... "
                 "out of bounds when extended... Not implemented yet!"
             )
             continue
@@ -190,5 +193,128 @@ def make_profile(data_dir, regions, output, width, strand_column, label):
             echo(uc)
 
     # write final output file of binned methylation fractions
-    write_profile(output, n_meth_global, n_non_na_global, cell_names, extend_by, label)
+    _write_profile(output, n_meth_global, n_non_na_global, cell_names, extend_by, label)
+    return
+
+
+def _get_cell_names(cov_files):
+    """
+    Use the file base names (without extension) as cell names
+    """
+    names = []
+    for file_handle in cov_files:
+        f = file_handle.name
+        if f.lower().endswith(".gz"):
+            # remove .xxx.gz
+            names.append(os.path.splitext(os.path.splitext(os.path.basename(f))[0])[0])
+        else:
+            # remove .xxx
+            names.append(os.path.splitext(os.path.basename(f))[0])
+    if len(set(names)) < len(names):
+        s = (
+            "\n".join(names) + "\nThese sample names are not unique, "
+            "check your file names again!"
+        )
+        raise Exception(s)
+    return names
+
+
+def _iterate_covfile(cov_file, header):
+    """
+    Iterate over a single cell input file, line by line,
+    optionally skipping the header and unzipping on the fly
+    """
+    if cov_file.name.lower().endswith(".gz"):
+        # handle gzip-compressed file
+        lines = gzip.decompress(cov_file.read()).decode().split("\n")
+        if header:
+            lines = lines[1:]
+        for line in lines.split("\n"):
+            yield line.strip()
+    else:
+        # handle uncompressed file
+        if header:
+            _ = cov_file.readline()
+    for line in cov_file:
+        values = line.strip().split("\t")
+        yield values
+
+
+def _write_column_names(output_dir, fname="column_header.txt"):
+    """
+    The column names (usually cell names) will be
+    written to a separate text file
+    """
+    out_path = os.path.join(output_dir, fname)
+    with open(out_path, "w") as col_head:
+        for cell_name in cell_names:
+            col_head.write(cell_name + "\n")
+    return
+
+
+def _dump_dok_files(fpaths, input_format, n_cells, header, output_dir):
+    os.makedirs(output_dir, exist_ok=True)
+    c_col, p_col, m_col, u_col = [f - 1 for f in input_format]
+    dok_files = {}
+    chrom_sizes = {}
+    for cell_n, cov_file in enumerate(fpaths):
+        if cell_n % 100 == 0:
+            echo("{0:.2f}% done...".format(100 * cell_n / n_cells))
+        for line_vals in _iterate_covfile(cov_file, header):
+            n_meth, n_unmeth = int(line_vals[m_col]), int(line_vals[u_col])
+            if n_meth != 0 and n_unmeth != 0:
+                continue  # currently we ignore all CpGs that are not "clear"!
+            meth_value = 1 if n_meth > 0 else -1
+            genomic_pos = int(line_vals[p_col])
+            chrom = line_vals[c_col]
+            if chrom not in dok_files:
+                dok_path = os.path.join(output_dir, f"{chrom}.dok")
+                dok_files[chrom] = open(dok_path, "w")
+                chrom_sizes[chrom] = 0
+            if genomic_pos > chrom_sizes[chrom]:
+                chrom_sizes[chrom] = genomic_pos
+            dok_files[chrom].write(f"{genomic_pos},{cell_n},{meth_value}\n")
+    for fhandle in dok_files.values():
+        # maybe somehow use try/finally or "with" to make sure
+        # they're closed even when crashing
+        fhandle.close()
+    echo("100% done.")
+    return dok_files, chrom_sizes
+
+
+def matrix(input_files, data_dir, input_format, header):
+    cell_names = _get_cell_names(input_files)
+    n_cells = len(cell_names)
+
+    # For each chromosome, we first make a sparse matrix in DOK (dictionary of keys)
+    # format, because DOK can be constructed value by value, without knowing the
+    # dimensions beforehand. This means we can construct it cell by cell.
+    # We dump the DOK to hard disk to save RAM and then later convert each DOK to a
+    # more efficient format (CSR).
+    echo(f"Processing {n_cells} methylation files...")
+    dok_files, chrom_sizes = _dump_dok_files(
+        input_files, input_format, n_cells, header, data_dir)
+    echo("\nStoring methylation data in 'compressed "
+         "sparse row' (CSR) matrix format for future use...")
+
+    # read each DOK file and convert the matrix to CSR format.
+    for chrom in dok_files.keys():
+        # create empty matrix
+        chrom_size = chrom_sizes[chrom]
+        mat = sp_sparse.dok_matrix((chrom_size + 1, n_cells), dtype=np.int8)
+        echo(f"Populating {chrom_size} x {n_cells} matrix for chromosome {chrom}...")
+        # populate with values from temporary dok file
+        dok_path = os.path.join(data_dir, f"{chrom}.dok")
+        with open(dok_path, "r") as fhandle:
+            for line in fhandle:
+                genomic_pos, cell_n, meth_value = line.strip().split(",")
+                mat[int(genomic_pos), int(cell_n)] = int(meth_value)
+        mat_path = os.path.join(data_dir, f"{chrom}.npz")
+        echo(f"Writing to {mat_path} ...")
+        sp_sparse.save_npz(mat_path, mat.tocsr())
+        os.remove(dok_path)  # delete temporary .dok file
+
+    _write_column_names(data_dir)
+    echo(f"Wrote cell names to {out_path}")
+    secho(f"\nSuccessfully finished.", fg="green")
     return
