@@ -1,11 +1,17 @@
 from __future__ import print_function, division
 import os
 import gzip
+import glob
 import pandas as pd
 import numpy as np
 import scipy.sparse as sp_sparse
+import json
 from statsmodels.stats.proportion import proportion_confint
 from click import echo, secho, style
+
+
+# ignore division by 0 and division by NaN error
+np.seterr(divide="ignore", invalid="ignore")
 
 
 def _get_filepath(f):
@@ -226,21 +232,22 @@ def _iterate_covfile(cov_file, header):
     """
     if cov_file.name.lower().endswith(".gz"):
         # handle gzip-compressed file
-        lines = gzip.decompress(cov_file.read()).decode().split("\n")
+        lines = gzip.decompress(cov_file.read()).decode().strip().split("\n")
         if header:
             lines = lines[1:]
-        for line in lines.split("\n"):
-            yield line.strip()
+        for line in lines:
+            values = line.strip().split("\t")
+            yield values
     else:
         # handle uncompressed file
         if header:
             _ = cov_file.readline()
-    for line in cov_file:
-        values = line.strip().split("\t")
-        yield values
+        for line in cov_file:
+            values = line.decode().strip().split("\t")
+            yield values
 
 
-def _write_column_names(output_dir, fname="column_header.txt"):
+def _write_column_names(output_dir, cell_names, fname="column_header.txt"):
     """
     The column names (usually cell names) will be
     written to a separate text file
@@ -249,7 +256,7 @@ def _write_column_names(output_dir, fname="column_header.txt"):
     with open(out_path, "w") as col_head:
         for cell_name in cell_names:
             col_head.write(cell_name + "\n")
-    return
+    return out_path
 
 
 def _dump_dok_files(fpaths, input_format, n_cells, header, output_dir):
@@ -282,9 +289,27 @@ def _dump_dok_files(fpaths, input_format, n_cells, header, output_dir):
     return dok_files, chrom_sizes
 
 
-def matrix(input_files, data_dir, input_format, header):
+def _write_summary_stats(data_dir, cell_names, n_obs, n_meth):
+    stats_df = pd.DataFrame(
+        {
+            "cell_name": cell_names,
+            "n_obs": n_obs,
+            "n_meth": n_meth,
+            "global_meth_frac": np.divide(n_meth, n_obs),
+        }
+    )
+    out_path = os.path.join(data_dir, "cell_stats.csv")
+    with open(out_path, "w") as outfile:
+        outfile.write(stats_df.to_csv(index=False))
+    return out_path
+
+
+def prepare(input_files, data_dir, input_format, header):
     cell_names = _get_cell_names(input_files)
     n_cells = len(cell_names)
+    # we use this opportunity to count some basic summary stats
+    n_obs_cell = np.zeros(n_cells, dtype=np.int64)
+    n_meth_cell = np.zeros(n_cells, dtype=np.int64)
 
     # For each chromosome, we first make a sparse matrix in DOK (dictionary of keys)
     # format, because DOK can be constructed value by value, without knowing the
@@ -293,9 +318,12 @@ def matrix(input_files, data_dir, input_format, header):
     # more efficient format (CSR).
     echo(f"Processing {n_cells} methylation files...")
     dok_files, chrom_sizes = _dump_dok_files(
-        input_files, input_format, n_cells, header, data_dir)
-    echo("\nStoring methylation data in 'compressed "
-         "sparse row' (CSR) matrix format for future use...")
+        input_files, input_format, n_cells, header, data_dir
+    )
+    echo(
+        "\nStoring methylation data in 'compressed "
+        "sparse row' (CSR) matrix format for future use."
+    )
 
     # read each DOK file and convert the matrix to CSR format.
     for chrom in dok_files.keys():
@@ -311,10 +339,178 @@ def matrix(input_files, data_dir, input_format, header):
                 mat[int(genomic_pos), int(cell_n)] = int(meth_value)
         mat_path = os.path.join(data_dir, f"{chrom}.npz")
         echo(f"Writing to {mat_path} ...")
-        sp_sparse.save_npz(mat_path, mat.tocsr())
+        mat = mat.tocsr()  # convert from DOK to CSR format
+
+        n_obs_cell += mat.getnnz(axis=0)
+        n_meth_cell += np.ravel(np.sum(mat > 0, axis=0))
+
+        sp_sparse.save_npz(mat_path, mat)
         os.remove(dok_path)  # delete temporary .dok file
 
-    _write_column_names(data_dir)
-    echo(f"Wrote cell names to {out_path}")
-    secho(f"\nSuccessfully finished.", fg="green")
+    colname_path = _write_column_names(data_dir, cell_names)
+    echo(f"\nWrote matrix column names to {colname_path}")
+    stats_path = _write_summary_stats(data_dir, cell_names, n_obs_cell, n_meth_cell)
+    echo(f"Wrote summary stats for each cell to {stats_path}")
+    secho(
+        f"\nSuccessfully stored methylation data for {n_cells} cells "
+        f"with {len(dok_files.keys())} chromosomes.",
+        fg="green",
+    )
+    return
+
+
+class Smoother(object):
+    def __init__(self, sparse_mat, bandwidth=1000, weigh=False):
+        # create the tricube kernel
+        self.hbw = bandwidth // 2
+        rel_dist = np.abs((np.arange(bandwidth) - self.hbw) / self.hbw)
+        self.kernel = (1 - (rel_dist ** 3)) ** 3
+        # calculate (unsmoothed) methylation fraction across the chromosome
+        n_obs = sparse_mat.getnnz(axis=1)
+        n_meth = np.ravel(np.sum(sparse_mat > 0, axis=1))
+        self.mfracs = np.divide(n_meth, n_obs)
+        self.cpg_pos = (~np.isnan(self.mfracs)).nonzero()[0]
+        assert n_obs.shape == n_meth.shape == self.mfracs.shape
+        if weigh:
+            self.weights = np.log1p(n_obs)
+        self.weigh = weigh
+        return
+
+    def smooth(self):
+        smoothed = {}
+        for i in self.cpg_pos:
+            window = self.mfracs[i - self.hbw : i + self.hbw]
+            nz = ~np.isnan(window)
+            try:
+                k = self.kernel[nz]
+                if self.weigh:
+                    w = self.weights[i - self.hbw : i + self.hbw][nz]
+                    smooth_val = np.divide(np.sum(window[nz] * k * w), np.sum(k * w))
+                else:
+                    smooth_val = np.divide(np.sum(window[nz] * k), np.sum(k))
+                smoothed[int(i)] = smooth_val
+            except IndexError:
+                # when the smoothing bandwith is out of bounds of
+                # the chromosome... needs fixing eventually
+                pass
+        return smoothed
+
+
+def smooth(data_dir, bandwidth, use_weights):
+    smoothed_chroms = {}
+    for mat_path in sorted(glob.glob(os.path.join(data_dir, "*.npz"))):
+        chrom = os.path.basename(os.path.splitext(mat_path)[0])
+        echo(f"Reading chromosome {chrom} data from {mat_path} ...")
+        mat = sp_sparse.load_npz(mat_path)
+        sm = Smoother(mat, bandwidth, use_weights)
+        echo(f"Smoothing chromosome {chrom} ...")
+        smoothed_chroms[chrom] = sm.smooth()
+    json_path = os.path.join(data_dir, "smoothed.json")
+    with open(json_path, "w") as json_file:
+        json.dump(smoothed_chroms, json_file)
+    secho(f"\nSuccessfully wrote smoothed methylation data to {json_path}", fg="green")
+    return
+
+
+# profile(data_dir, regions, output, width, strand_column, label)
+def main(data_dir, regions, output, keep_cols, bandwidth, use_weights):
+    begin_time = datetime.datetime.now()
+    print(f"starting script at {begin_time}.")
+
+    out_dir = os.path.dirname(data_dir)
+    out_dir = "." if not out_dir else out_dir
+    if not os.access(out_dir, os.W_OK):
+        raise Exception(
+            f"Cannot write to output directory '{out_dir}',"
+            " do you have writing permissions?"
+        )
+
+    cell_names = []
+    with open(os.path.join(data_dir, "column_header.txt"), "r") as col_heads:
+        for line in col_heads:
+            cell_names.append(line.strip())
+
+    n_regions = 0  # count the total number of valid regions in the bed file
+    n_empty_regions = 0  # count the number of regions that don't overlap a CpG
+    observed_chroms = set()
+    unknown_chroms = set()
+    prev_chrom = None
+
+    with output_file_handle(output) as out:
+
+        for bed_entries in iter_bed(regions):
+            chrom, start, end = bed_entries[:3]
+            if chrom in unknown_chroms:
+                continue
+            further_bed_entries = ",".join(bed_entries[3:])
+            if chrom != prev_chrom:
+                # we reached a new chrom, load the next matrix
+                if chrom in observed_chroms:
+                    raise Exception(f"{regions} is not sorted alphabetically!")
+                mat_path = os.path.join(data_dir, f"{chrom}.npz")
+                try:
+                    print(f"loading chromosome {chrom} from {mat_path} ...", end="\r")
+                    mat = sp_sparse.load_npz(mat_path)
+                    print(f"loading chromosome {chrom} from {mat_path} ... done!")
+                    print(
+                        f"extracting methylation for regions on chromosome {chrom} ..."
+                    )
+                    smoother = Smoother(mat, bandwidth, weigh=use_weights)
+                except FileNotFoundError:
+                    unknown_chroms.add(chrom)
+                    print(
+                        f"  WARNING: Couldn't load {mat_path}! "
+                        f"Regions on chromosome {chrom} will not be used."
+                    )
+                observed_chroms.add(chrom)
+                prev_chrom = chrom
+
+            region = mat[start:end, :]
+            n_regions += 1
+            if region.nnz == 0:
+                # skip regions that contain no CpG
+                n_empty_regions += 1
+                continue
+
+            n_non_na = region.getnnz(axis=0)
+            n_meth = np.ravel(np.sum(region > 0, axis=0))
+            nz_cells = np.nonzero(n_non_na > 0)[0]
+            # smoothing and centering:
+            cpg_positions = np.nonzero(region.getnnz(axis=1))[0]
+            region = region[cpg_positions, :].todense()  # remove all non-CpG bases
+            region = np.where(region == 0, np.nan, region)
+            region = np.where(region == -1, 0, region)
+            # smoothing:
+            smoothed = np.array([smoother[pos] for pos in cpg_positions + start])
+            # centering, using the smoothed means
+            mvals_centered = np.subtract(region, np.reshape(smoothed, (-1, 1)))
+            # add a 0 pseudocount as a sort of shrinkage
+            mvals_pcount = np.zeros(
+                (mvals_centered.shape[0] + 1, mvals_centered.shape[1])
+            )
+            mvals_pcount[1:, :] = mvals_centered
+            # calculate methylation % per cell (3 different ways, so we can compare performance)
+            mfracs_raw = np.nanmean(region, axis=0)
+            mfracs_centered = np.nanmean(mvals_centered, axis=0)
+            mfracs_pcount = np.nanmean(mvals_pcount, axis=0)
+
+            for c in nz_cells:
+                if keep_cols:
+                    s = f"{chrom},{start},{end},{cell_names[c]},{n_meth[c]},{n_non_na[c]},{mfracs_raw[c]},{mfracs_centered[c]},{mfracs_pcount[c]},{further_bed_entries}\n"
+                else:
+                    # s = f"{chrom}:{start}-{end},{cell_i},{cell_names[c]},{n_meth_cell},{n_non_na_cell},{mfrac}\n"
+                    s = f"{chrom},{start},{end},{cell_names[c]},{n_meth[c]},{n_non_na[c]},{mfracs_raw[c]},{mfracs_centered[c]},{mfracs_pcount[c]}\n"
+                out.write(s)
+
+    print(
+        f"Profiled {n_regions} regions.\n"
+        f"{n_empty_regions} regions ({n_empty_regions/n_regions:.2%}) "
+        f"contained no covered methylation site."
+    )
+
+    end_time = datetime.datetime.now()
+    print(
+        f"ending script at {end_time}\n"
+        f"total runtime is {end_time - begin_time} (h:m:s.µs)."
+    )
     return

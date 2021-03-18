@@ -1,7 +1,7 @@
 import click
 from click import echo, secho, style
 from datetime import datetime, timedelta
-from scbs.scbs import _get_filepath, profile, matrix
+from scbs.scbs import _get_filepath, profile, prepare, smooth
 from click_help_colors import HelpColorsGroup, HelpColorsCommand
 
 
@@ -32,6 +32,7 @@ def _print_kwargs(kwargs):
     echo()
 
 
+# command group
 @click.group(
     cls=HelpColorsGroup,
     help_headers_color="bright_white",
@@ -52,20 +53,9 @@ def cli():
     pass
 
 
-@click.command()
-@click.argument("cov_file_paths", nargs=-1, required=True, type=click.File())
-@click.option("-o", "--output-dir", required=True, type=click.Path(), show_default=True)
-@click.option("--format", default=(1, 2, 5, 6), nargs=4, show_default=True)
-@click.option("--header", is_flag=True, show_default=True)
-def test(**kwargs):
-    echo(f"format is {format}.")
-    echo(f"header is {header}.")
-    echo(f"output dir is {output_dir}.")
-    for f in cov_file_paths:
-        echo(f"reading {f} ...")
-
-
-@click.command(
+# prepare command
+@cli.command(
+    name="prepare",
     help=f"""
     Gathers single cell methylation data from multiple input files
     (one per cell) and creates a sparse matrix (position x cell) in CSR
@@ -79,8 +69,9 @@ def test(**kwargs):
     where the methylation data will be stored.
     """,
     short_help="First step: Collect and store sc-methylation data for quick access",
+    no_args_is_help=True,
 )
-@click.argument("input-files", type=click.File("r"), nargs=-1)
+@click.argument("input-files", type=click.File("rb"), nargs=-1)
 @click.argument(
     "data-dir",
     type=click.Path(dir_okay=True, file_okay=False, writable=True),
@@ -105,13 +96,15 @@ def test(**kwargs):
     "required when using Bismark files]",
 )
 def matrix_cli(**kwargs):
-    timer = Timer(label="matrix")
+    timer = Timer(label="prepare")
     _print_kwargs(kwargs)
     matrix(**kwargs)
     timer.stop()
 
 
-@click.command(
+# profile command
+@cli.command(
+    name="profile",
     help=f"""
     From single cell methylation or NOMe-seq data,
     calculates the average methylation profile of a set of
@@ -128,6 +121,7 @@ def matrix_cli(**kwargs):
     will be written. Should end with '.csv'.
     """,
     short_help="Plot mean methylation around a group of genomic features",
+    no_args_is_help=True,
 )
 @click.argument("regions", type=click.File("r"))
 @click.argument(
@@ -152,19 +146,55 @@ def matrix_cli(**kwargs):
     type=click.IntRange(min=1, max=None),
     metavar="INTEGER",
     help="The bed column number (1-indexed) denoting "
-    "the DNA strand of the region [optional].",
+    "the DNA strand of the region  [optional].",
 )
 @click.option(
     "--label",
     help="Specify a constant value to be added as a "
     "column to the output table. This can be "
     "useful to give each output a unique label when "
-    "you want to concatenate multiple outputs [optional].",
+    "you want to concatenate multiple outputs  [optional].",
 )
 def profile_cli(**kwargs):
     timer = Timer(label="profile")
     _print_kwargs(kwargs)
     profile(**kwargs)
+    timer.stop()
+
+
+# smooth command
+@cli.command(
+    name="smooth",
+    help=f"""
+    This script will calculate the smoothed mean methylation over the
+    whole genome.
+
+    {style("DATA_DIR", fg="green")} is the directory containing the methylation matrices
+    produced by running 'scbs matrix'.
+
+    The smoothed methylation values will be written to 
+    {style("DATA_DIR/smoothed.json", fg="green")}.
+    """,
+    short_help="Smooth sc-methylation data",
+)
+@click.argument(
+    "data-dir",
+    type=click.Path(exists=True, dir_okay=True, file_okay=False, readable=True, writable=True),
+)
+@click.option(
+    "-bw", "--bandwidth",
+    default=1000,
+    type=click.IntRange(min=1, max=1e6),
+    metavar="INTEGER",
+    show_default=True,
+    help="Smoothing bandwidth.",
+)
+@click.option("--use-weights", is_flag=True,
+    help="Use this to weigh CpGs by log1p(coverage).")
+def smooth_cli(**kwargs):
+    timer = Timer(label="smooth")
+    _print_kwargs(kwargs)
+    smooth(**kwargs)
     timer.stop()
 
 
@@ -190,34 +220,5 @@ def template(**kwargs):
     timer.stop()
 
 
-# CLI template:
-@click.command(
-    help=f"""
-    Blabla
-
-    {style("INPUT", fg="green")} blabla
-
-    {style("OUTPUT", fg="green")} blabla
-    """,
-    short_help="template for dev",
-)
-@click.argument("input", type=click.File("rb"))
-@click.option("--header", is_flag=True)
-def gzip(**kwargs):
-    timer = Timer(label="gzip")
-    _print_kwargs(kwargs)
-    if kwargs["input"].name.endswith(".gz"):
-        lines = gzip.decompress(kwargs["input"].read()).decode().split("\n")
-        for line in lines[1:]:
-            print("---")
-            print(line)
-    else:
-        if kwargs["header"]:
-            kwargs["input"].readline()
-        for line in kwargs["input"]:
-            print(line.decode().strip())
-    timer.stop()
-
-
-cli.add_command(matrix_cli, name="matrix")
-cli.add_command(profile_cli, name="profile")
+# cli.add_command(matrix_cli, name="matrix")
+# cli.add_command(profile_cli, name="profile")
