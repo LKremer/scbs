@@ -98,7 +98,7 @@ def cli():
 def matrix_cli(**kwargs):
     timer = Timer(label="prepare")
     _print_kwargs(kwargs)
-    matrix(**kwargs)
+    prepare(**kwargs)
     timer.stop()
 
 
@@ -176,6 +176,7 @@ def profile_cli(**kwargs):
     {style("DATA_DIR/smoothed.json", fg="green")}.
     """,
     short_help="Smooth sc-methylation data",
+    no_args_is_help=True,
 )
 @click.argument(
     "data-dir",
