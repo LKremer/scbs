@@ -122,12 +122,14 @@ def profile(data_dir, regions, output, width, strand_column, label):
                 raise Exception(f"{_get_filepath(regions)} is not sorted!")
             mat_path = os.path.join(data_dir, f"{chrom}.npz")
             try:
-                echo(f"loading chromosome {chrom} from {mat_path} ... ", nl=False)
+                echo(f"loading chromosome {chrom} from {mat_path} ... ")
                 mat = sp_sparse.load_npz(mat_path)
-                echo("done!")
-                echo(f"extracting methylation for regions on chromosome {chrom} ...")
+                # echo("done!")
             except FileNotFoundError:
+                secho(f"The file {mat_path} does not exist", fg="red")
                 unknown_chroms.add(chrom)
+                continue
+            echo(f"extracting methylation for regions on chromosome {chrom} ...")
             observed_chroms.add(chrom)
             if prev_chrom is None:
                 # this happens at the very start, i.e. on the first chromosome
@@ -191,8 +193,8 @@ def profile(data_dir, regions, output, width, strand_column, label):
     if unknown_chroms:
         secho("\nWarning:", fg="red")
         echo(
-            "\nWarning: The following chromosomes are present in "
-            f"'{os.splitext(_get_filepath(regions))}' but not in "
+            "The following chromosomes are present in "
+            f"'{_get_filepath(regions)}' but not in "
             f"'{_get_filepath(data_dir)}':"
         )
         for uc in sorted(unknown_chroms):
@@ -449,9 +451,9 @@ def main(data_dir, regions, output, keep_cols, bandwidth, use_weights):
                     raise Exception(f"{regions} is not sorted alphabetically!")
                 mat_path = os.path.join(data_dir, f"{chrom}.npz")
                 try:
-                    print(f"loading chromosome {chrom} from {mat_path} ...", end="\r")
+                    print(f"loading chromosome {chrom} from {mat_path} ...")
                     mat = sp_sparse.load_npz(mat_path)
-                    print(f"loading chromosome {chrom} from {mat_path} ... done!")
+                    # print(f"loading chromosome {chrom} from {mat_path} ... done!")
                     print(
                         f"extracting methylation for regions on chromosome {chrom} ..."
                     )
