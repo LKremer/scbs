@@ -1,4 +1,4 @@
-from scbs_tools import __version__
+from scbs import __version__
 
 
 def test_version():
