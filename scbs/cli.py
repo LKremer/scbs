@@ -1,7 +1,7 @@
 import click
 from click import echo, secho, style
 from datetime import datetime, timedelta
-from scbs.scbs import _get_filepath, profile, prepare, smooth
+from scbs.scbs import _get_filepath, profile, prepare, smooth, matrix
 from click_help_colors import HelpColorsGroup, HelpColorsCommand
 
 
@@ -196,6 +196,31 @@ def smooth_cli(**kwargs):
     timer = Timer(label="smooth")
     _print_kwargs(kwargs)
     smooth(**kwargs)
+    timer.stop()
+
+
+# matrix command
+@cli.command(
+    name="matrix",
+    help=f"""
+    Blabla
+
+    {style("INPUT", fg="green")} blabla
+
+    {style("OUTPUT", fg="green")} blabla
+    """,
+    short_help="template for dev",
+)
+@click.argument("regions", type=click.File("r"))
+@click.argument(
+    "data-dir",
+    type=click.Path(exists=True, dir_okay=True, file_okay=False, readable=True),
+)
+@click.argument("output", type=click.File("w"))
+def matrix_cli(**kwargs):
+    timer = Timer(label="matrix")
+    _print_kwargs(kwargs)
+    matrix(**kwargs)
     timer.stop()
 
 

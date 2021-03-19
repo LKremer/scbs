@@ -378,9 +378,9 @@ class Smoother(object):
         self.weigh = weigh
         return
 
-    def smooth(self):
-        smoothed = {}
-        for i in self.cpg_pos:
+    def smooth_whole_chrom(self):
+        smoothed = np.full(self.cpg_pos.shape, fill_value=np.nan)
+        for j, i in enumerate(self.cpg_pos):
             window = self.mfracs[i - self.hbw : i + self.hbw]
             nz = ~np.isnan(window)
             try:
@@ -390,43 +390,41 @@ class Smoother(object):
                     smooth_val = np.divide(np.sum(window[nz] * k * w), np.sum(k * w))
                 else:
                     smooth_val = np.divide(np.sum(window[nz] * k), np.sum(k))
-                smoothed[int(i)] = smooth_val
+                smoothed[j] = smooth_val
             except IndexError:
                 # when the smoothing bandwith is out of bounds of
                 # the chromosome... needs fixing eventually
-                pass
+                smoothed[j] = np.nan
         return smoothed
 
 
 def smooth(data_dir, bandwidth, use_weights):
-    smoothed_chroms = {}
+    out_dir = os.path.join(data_dir, "smoothed")
+    os.makedirs(out_dir, exist_ok=True)
     for mat_path in sorted(glob.glob(os.path.join(data_dir, "*.npz"))):
         chrom = os.path.basename(os.path.splitext(mat_path)[0])
         echo(f"Reading chromosome {chrom} data from {mat_path} ...")
         mat = sp_sparse.load_npz(mat_path)
         sm = Smoother(mat, bandwidth, use_weights)
         echo(f"Smoothing chromosome {chrom} ...")
-        smoothed_chroms[chrom] = sm.smooth()
-    json_path = os.path.join(data_dir, "smoothed.json")
-    with open(json_path, "w") as json_file:
-        json.dump(smoothed_chroms, json_file)
-    secho(f"\nSuccessfully wrote smoothed methylation data to {json_path}", fg="green")
+        smoothed_chrom = sm.smooth_whole_chrom()
+        np.save(os.path.join(out_dir, f"{chrom}.npy"), smoothed_chrom)
+    secho(f"\nSuccessfully wrote smoothed methylation data to {out_dir}.", fg="green")
     return
 
 
-# profile(data_dir, regions, output, width, strand_column, label)
-def main(data_dir, regions, output, keep_cols, bandwidth, use_weights):
-    begin_time = datetime.datetime.now()
-    print(f"starting script at {begin_time}.")
+def _output_file_handle(raw_path):
+    path = raw_path.lower()
+    if path.endswith(".gz"):
+        handle = gzip.open(raw_path, "wt")
+    elif path.endswith(".csv"):
+        handle = open(raw_path, "w")
+    else:
+        handle = open(raw_path + ".csv", "w")
+    return handle
 
-    out_dir = os.path.dirname(data_dir)
-    out_dir = "." if not out_dir else out_dir
-    if not os.access(out_dir, os.W_OK):
-        raise Exception(
-            f"Cannot write to output directory '{out_dir}',"
-            " do you have writing permissions?"
-        )
 
+def matrix(data_dir, regions, output, keep_cols=False, bandwidth=2000, use_weights=False):
     cell_names = []
     with open(os.path.join(data_dir, "column_header.txt"), "r") as col_heads:
         for line in col_heads:
@@ -438,81 +436,75 @@ def main(data_dir, regions, output, keep_cols, bandwidth, use_weights):
     unknown_chroms = set()
     prev_chrom = None
 
-    with output_file_handle(output) as out:
+    # with _output_file_handle(output) as out:
+    for bed_entries in _iter_bed(regions):
+        chrom, start, end = bed_entries[:3]
+        if chrom in unknown_chroms:
+            continue
+        # further_bed_entries = ",".join(bed_entries[3:])
+        if chrom != prev_chrom:
+            # we reached a new chrom, load the next matrix
+            if chrom in observed_chroms:
+                raise Exception(f"{regions} is not sorted alphabetically!")
+            mat_path = os.path.join(data_dir, f"{chrom}.npz")
+            smoothed_path = os.path.join(data_dir, "smoothed", f"{chrom}.npy")
+            try:
+                print(f"loading chromosome {chrom} from {mat_path} ...", end="\r")
+                mat = sp_sparse.load_npz(mat_path)
+                print(f"loading chromosome {chrom} from {mat_path} ... done!")
+                print(
+                    f"extracting methylation for regions on chromosome {chrom} ..."
+                )
+                smoothed_cpg_pos = np.load(smoothed_path)
+            except FileNotFoundError:
+                unknown_chroms.add(chrom)
+                print(
+                    f"  WARNING: Couldn't load {mat_path}! "
+                    f"Regions on chromosome {chrom} will not be used."
+                )
+            observed_chroms.add(chrom)
+            prev_chrom = chrom
 
-        for bed_entries in iter_bed(regions):
-            chrom, start, end = bed_entries[:3]
-            if chrom in unknown_chroms:
-                continue
-            further_bed_entries = ",".join(bed_entries[3:])
-            if chrom != prev_chrom:
-                # we reached a new chrom, load the next matrix
-                if chrom in observed_chroms:
-                    raise Exception(f"{regions} is not sorted alphabetically!")
-                mat_path = os.path.join(data_dir, f"{chrom}.npz")
-                try:
-                    print(f"loading chromosome {chrom} from {mat_path} ...")
-                    mat = sp_sparse.load_npz(mat_path)
-                    # print(f"loading chromosome {chrom} from {mat_path} ... done!")
-                    print(
-                        f"extracting methylation for regions on chromosome {chrom} ..."
-                    )
-                    smoother = Smoother(mat, bandwidth, weigh=use_weights)
-                except FileNotFoundError:
-                    unknown_chroms.add(chrom)
-                    print(
-                        f"  WARNING: Couldn't load {mat_path}! "
-                        f"Regions on chromosome {chrom} will not be used."
-                    )
-                observed_chroms.add(chrom)
-                prev_chrom = chrom
+        region = mat[start:end, :]
+        n_regions += 1
+        if region.nnz == 0:
+            # skip regions that contain no CpG
+            n_empty_regions += 1
+            continue
 
-            region = mat[start:end, :]
-            n_regions += 1
-            if region.nnz == 0:
-                # skip regions that contain no CpG
-                n_empty_regions += 1
-                continue
+        n_non_na = region.getnnz(axis=0)
+        n_meth = np.ravel(np.sum(region > 0, axis=0))
+        nz_cells = np.nonzero(n_non_na > 0)[0]
+        # smoothing and centering:
+        cpg_positions = np.nonzero(region.getnnz(axis=1))[0]
+        region = region[cpg_positions, :].todense()  # remove all non-CpG bases
+        region = np.where(region==0, np.nan, region)
+        region = np.where(region==-1, 0, region)
+        # smoothing:
+        smooth_start = np.searchsorted(cpg_pos_chrom, start, "left")
+        smooth_end = np.searchsorted(cpg_pos_chrom, end, "right")
+        smoothed = smoothed_cpg_pos[smooth_start:smooth_end]
+        # centering, using the smoothed means
+        mvals_centered = np.subtract(region, np.reshape(smoothed, (-1, 1)))
+        # add a 0 pseudocount as a sort of shrinkage
+        mvals_pcount = np.zeros((mvals_centered.shape[0]+1, mvals_centered.shape[1]))
+        mvals_pcount[1:, :] = mvals_centered
+        # calculate methylation % per cell (3 different ways, so we can compare performance)
+        mfracs_raw = np.nanmean(region, axis=0)
+        mfracs_centered = np.nanmean(mvals_centered, axis=0)
+        mfracs_pcount = np.nanmean(mvals_pcount, axis=0)
 
-            n_non_na = region.getnnz(axis=0)
-            n_meth = np.ravel(np.sum(region > 0, axis=0))
-            nz_cells = np.nonzero(n_non_na > 0)[0]
-            # smoothing and centering:
-            cpg_positions = np.nonzero(region.getnnz(axis=1))[0]
-            region = region[cpg_positions, :].todense()  # remove all non-CpG bases
-            region = np.where(region == 0, np.nan, region)
-            region = np.where(region == -1, 0, region)
-            # smoothing:
-            smoothed = np.array([smoother[pos] for pos in cpg_positions + start])
-            # centering, using the smoothed means
-            mvals_centered = np.subtract(region, np.reshape(smoothed, (-1, 1)))
-            # add a 0 pseudocount as a sort of shrinkage
-            mvals_pcount = np.zeros(
-                (mvals_centered.shape[0] + 1, mvals_centered.shape[1])
-            )
-            mvals_pcount[1:, :] = mvals_centered
-            # calculate methylation % per cell (3 different ways, so we can compare performance)
-            mfracs_raw = np.nanmean(region, axis=0)
-            mfracs_centered = np.nanmean(mvals_centered, axis=0)
-            mfracs_pcount = np.nanmean(mvals_pcount, axis=0)
-
-            for c in nz_cells:
-                if keep_cols:
-                    s = f"{chrom},{start},{end},{cell_names[c]},{n_meth[c]},{n_non_na[c]},{mfracs_raw[c]},{mfracs_centered[c]},{mfracs_pcount[c]},{further_bed_entries}\n"
-                else:
-                    # s = f"{chrom}:{start}-{end},{cell_i},{cell_names[c]},{n_meth_cell},{n_non_na_cell},{mfrac}\n"
-                    s = f"{chrom},{start},{end},{cell_names[c]},{n_meth[c]},{n_non_na[c]},{mfracs_raw[c]},{mfracs_centered[c]},{mfracs_pcount[c]}\n"
-                out.write(s)
+        for c in nz_cells:
+            if keep_cols:
+                s = f"{chrom},{start},{end},{cell_names[c]},{n_meth[c]},{n_non_na[c]},{mfracs_raw[c]},{mfracs_centered[c]},{mfracs_pcount[c]},{further_bed_entries}\n"
+            else:
+                # s = f"{chrom}:{start}-{end},{cell_i},{cell_names[c]},{n_meth_cell},{n_non_na_cell},{mfrac}\n"
+                s = f"{chrom},{start},{end},{cell_names[c]},{n_meth[c]},{n_non_na[c]},{mfracs_raw[c]},{mfracs_centered[c]},{mfracs_pcount[c]}\n"
+            output.write(s)
 
     print(
         f"Profiled {n_regions} regions.\n"
         f"{n_empty_regions} regions ({n_empty_regions/n_regions:.2%}) "
         f"contained no covered methylation site."
-    )
-
-    end_time = datetime.datetime.now()
-    print(
-        f"ending script at {end_time}\n"
-        f"total runtime is {end_time - begin_time} (h:m:s.µs)."
     )
     return
