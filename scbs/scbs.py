@@ -424,6 +424,33 @@ def _output_file_handle(raw_path):
     return handle
 
 
+def _load_chrom_mat(data_dir, chrom):
+    mat_path = os.path.join(data_dir, f"{chrom}.npz")
+    echo(f"loading chromosome {chrom} from {mat_path} ...")
+    try:
+        mat = sp_sparse.load_npz(mat_path)
+        cpg_pos_chrom = np.nonzero(mat.getnnz(axis=1))[0]
+    except FileNotFoundError:
+        unknown_chroms.add(chrom)
+        secho("Warning: ", fg="red", nl=False)
+        echo(
+            f"Couldn't load methylation data for chromosome {chrom} from {mat_path}. "
+            f"Regions on chromosome {chrom} will not be considered."
+        )
+        mat = None
+    return mat
+
+
+def _load_smoothed_chrom(data_dir, chrom):
+    smoothed_path = os.path.join(data_dir, "smoothed", f"{chrom}.npy")
+    if not os.path.isfile(smoothed_path):
+        raise Exception(
+            "Could not find smoothed methylation data for "
+            f"chromosome {chrom} at {smoothed_path} . "
+            "Please run 'scbs smooth' first.")
+    return np.load(smoothed_path)
+
+
 def matrix(data_dir, regions, output, keep_cols=False, bandwidth=2000, use_weights=False):
     cell_names = []
     with open(os.path.join(data_dir, "column_header.txt"), "r") as col_heads:
@@ -446,22 +473,13 @@ def matrix(data_dir, regions, output, keep_cols=False, bandwidth=2000, use_weigh
             # we reached a new chrom, load the next matrix
             if chrom in observed_chroms:
                 raise Exception(f"{regions} is not sorted alphabetically!")
-            mat_path = os.path.join(data_dir, f"{chrom}.npz")
-            smoothed_path = os.path.join(data_dir, "smoothed", f"{chrom}.npy")
-            try:
-                print(f"loading chromosome {chrom} from {mat_path} ...", end="\r")
-                mat = sp_sparse.load_npz(mat_path)
-                print(f"loading chromosome {chrom} from {mat_path} ... done!")
-                print(
-                    f"extracting methylation for regions on chromosome {chrom} ..."
-                )
-                smoothed_cpg_pos = np.load(smoothed_path)
-            except FileNotFoundError:
+            mat = _load_chrom_mat(data_dir, chrom)
+            if mat is None:
                 unknown_chroms.add(chrom)
-                print(
-                    f"  WARNING: Couldn't load {mat_path}! "
-                    f"Regions on chromosome {chrom} will not be used."
-                )
+            else:
+                print(f"extracting methylation for regions on chromosome {chrom} ...")
+                smoothed_cpg_vals = _load_smoothed_chrom(data_dir, chrom)
+                cpg_pos_chrom = np.nonzero(mat.getnnz(axis=1))[0]
             observed_chroms.add(chrom)
             prev_chrom = chrom
 
@@ -472,9 +490,9 @@ def matrix(data_dir, regions, output, keep_cols=False, bandwidth=2000, use_weigh
             n_empty_regions += 1
             continue
 
-        n_non_na = region.getnnz(axis=0)
+        n_obs = region.getnnz(axis=0)
         n_meth = np.ravel(np.sum(region > 0, axis=0))
-        nz_cells = np.nonzero(n_non_na > 0)[0]
+        nz_cells = np.nonzero(n_obs > 0)[0]
         # smoothing and centering:
         cpg_positions = np.nonzero(region.getnnz(axis=1))[0]
         region = region[cpg_positions, :].todense()  # remove all non-CpG bases
@@ -483,7 +501,7 @@ def matrix(data_dir, regions, output, keep_cols=False, bandwidth=2000, use_weigh
         # smoothing:
         smooth_start = np.searchsorted(cpg_pos_chrom, start, "left")
         smooth_end = np.searchsorted(cpg_pos_chrom, end, "right")
-        smoothed = smoothed_cpg_pos[smooth_start:smooth_end]
+        smoothed = smoothed_cpg_vals[smooth_start:smooth_end]
         # centering, using the smoothed means
         mvals_centered = np.subtract(region, np.reshape(smoothed, (-1, 1)))
         # add a 0 pseudocount as a sort of shrinkage
@@ -496,14 +514,15 @@ def matrix(data_dir, regions, output, keep_cols=False, bandwidth=2000, use_weigh
 
         for c in nz_cells:
             if keep_cols:
-                s = f"{chrom},{start},{end},{cell_names[c]},{n_meth[c]},{n_non_na[c]},{mfracs_raw[c]},{mfracs_centered[c]},{mfracs_pcount[c]},{further_bed_entries}\n"
+                s = f"{chrom},{start},{end},{cell_names[c]},{n_meth[c]},{n_obs[c]},{mfracs_raw[c]},{mfracs_centered[c]},{mfracs_pcount[c]},{further_bed_entries}\n"
             else:
-                # s = f"{chrom}:{start}-{end},{cell_i},{cell_names[c]},{n_meth_cell},{n_non_na_cell},{mfrac}\n"
-                s = f"{chrom},{start},{end},{cell_names[c]},{n_meth[c]},{n_non_na[c]},{mfracs_raw[c]},{mfracs_centered[c]},{mfracs_pcount[c]}\n"
+                s = f"{chrom},{start},{end},{cell_names[c]},{n_meth[c]},{n_obs[c]},{mfracs_raw[c]},{mfracs_centered[c]},{mfracs_pcount[c]}\n"
             output.write(s)
 
-    print(
-        f"Profiled {n_regions} regions.\n"
+    print(f"Profiled {n_regions} regions.\n")
+    if n_empty_regions / n_regions > .5:
+        secho("Warning - most regions have no coverage in any cell:", fg="red")
+    echo(
         f"{n_empty_regions} regions ({n_empty_regions/n_regions:.2%}) "
         f"contained no covered methylation site."
     )
