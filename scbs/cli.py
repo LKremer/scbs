@@ -1,8 +1,8 @@
 import click
-from click import echo, secho, style
+from click import echo, style
 from datetime import datetime, timedelta
 from scbs.scbs import _get_filepath, profile, prepare, smooth, matrix
-from click_help_colors import HelpColorsGroup, HelpColorsCommand
+from click_help_colors import HelpColorsGroup
 
 
 class Timer(object):
@@ -43,7 +43,7 @@ def _print_kwargs(kwargs):
         their help like this:
 
         {style("scbs profile --help", fg="blue")}
-        
+
         To use stdin or stdout, use the character
         {style("-", fg="blue")} instead of a file path.
         """,
@@ -95,7 +95,7 @@ def cli():
     help="Use this when input files have a column header [default: off, not "
     "required when using Bismark files]",
 )
-def matrix_cli(**kwargs):
+def prepare_cli(**kwargs):
     timer = Timer(label="prepare")
     _print_kwargs(kwargs)
     prepare(**kwargs)
@@ -115,7 +115,7 @@ def matrix_cli(**kwargs):
     for which the methylation profile will be produced.
 
     {style("DATA_DIR", fg="green")} is the directory containing the methylation matrices
-    produced by running 'scbs matrix'.
+    produced by running 'scbs prepare'.
 
     {style("OUTPUT", fg="green")} is the file path where the methylation profile data
     will be written. Should end with '.csv'.
@@ -170,9 +170,9 @@ def profile_cli(**kwargs):
     whole genome.
 
     {style("DATA_DIR", fg="green")} is the directory containing the methylation matrices
-    produced by running 'scbs matrix'.
+    produced by running 'scbs prepare'.
 
-    The smoothed methylation values will be written to 
+    The smoothed methylation values will be written to
     {style("DATA_DIR/smoothed.json", fg="green")}.
     """,
     short_help="Smooth sc-methylation data",
@@ -180,18 +180,23 @@ def profile_cli(**kwargs):
 )
 @click.argument(
     "data-dir",
-    type=click.Path(exists=True, dir_okay=True, file_okay=False, readable=True, writable=True),
+    type=click.Path(
+        exists=True, dir_okay=True, file_okay=False, readable=True, writable=True
+    ),
 )
 @click.option(
-    "-bw", "--bandwidth",
+    "-bw",
+    "--bandwidth",
     default=1000,
     type=click.IntRange(min=1, max=1e6),
     metavar="INTEGER",
     show_default=True,
     help="Smoothing bandwidth.",
 )
-@click.option("--use-weights", is_flag=True,
-    help="Use this to weigh CpGs by log1p(coverage).")
+@click.option(
+    "--keep-columns", is_flag=True,
+    help="To keep additional columns of the input bed-file."
+)
 def smooth_cli(**kwargs):
     timer = Timer(label="smooth")
     _print_kwargs(kwargs)
@@ -199,17 +204,27 @@ def smooth_cli(**kwargs):
     timer.stop()
 
 
-# matrix command
+# matrix command (makes a "count" matrix)
 @cli.command(
     name="matrix",
     help=f"""
-    Blabla
+    From single cell methylation or NOMe-seq data, calculates the average methylation
+    in genomic regions for every cell. The output is a long table that can be used e.g.
+    for dimensionality reduction or clustering.
 
-    {style("INPUT", fg="green")} blabla
+    {style("REGIONS", fg="green")} is an alphabetically sorted (!) .bed file of regions
+    for which methylation will be quantified in every cell.
 
-    {style("OUTPUT", fg="green")} blabla
+    {style("DATA_DIR", fg="green")} is the directory containing the methylation
+    matrices produced by running 'scbs prepare', as well as the smoothed methylation
+    values produced by running 'scbs smooth'.
+
+    {style("OUTPUT", fg="green")} is the file path where the count table will be
+    written. Should end with '.csv'. The table is in long format and missing values
+    are omitted.
     """,
-    short_help="template for dev",
+    short_help="make a 'count' matrix",
+    no_args_is_help=True,
 )
 @click.argument("regions", type=click.File("r"))
 @click.argument(
@@ -217,11 +232,18 @@ def smooth_cli(**kwargs):
     type=click.Path(exists=True, dir_okay=True, file_okay=False, readable=True),
 )
 @click.argument("output", type=click.File("w"))
+@click.option("--keep-other-columns", is_flag=True,
+    help="Use this to keep other columns that the input bed-file may contain.")
 def matrix_cli(**kwargs):
     timer = Timer(label="matrix")
     _print_kwargs(kwargs)
     matrix(**kwargs)
     timer.stop()
+
+
+
+
+
 
 
 # CLI template:

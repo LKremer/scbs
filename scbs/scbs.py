@@ -5,9 +5,8 @@ import glob
 import pandas as pd
 import numpy as np
 import scipy.sparse as sp_sparse
-import json
 from statsmodels.stats.proportion import proportion_confint
-from click import echo, secho, style
+from click import echo, secho
 
 
 # ignore division by 0 and division by NaN error
@@ -21,8 +20,9 @@ def _get_filepath(f):
     return f.name if hasattr(f, "name") else f
 
 
-def _iter_bed(file_obj, strand_col_i=None):
+def _iter_bed(file_obj, strand_col_i=None, keep_cols=False):
     is_rev_strand = False
+    other_columns = False
     if strand_col_i is not None:
         strand_col_i -= 1  # CLI is 1-indexed
     for line in file_obj:
@@ -40,8 +40,10 @@ def _iter_bed(file_obj, strand_col_i=None):
                     f"Invalid strand column value '{strand_val}'. "
                     "Should be '+', '-', '1', or '-1'."
                 )
+        if keep_cols:
+            other_columns = values[3:]
         # yield chrom, start, end, and whether the feature is on the minus strand
-        yield values[0], int(values[1]), int(values[2]), is_rev_strand
+        yield values[0], int(values[1]), int(values[2]), is_rev_strand, other_columns
 
 
 def _redefine_bed_regions(start, end, extend_by):
@@ -97,6 +99,21 @@ def _write_profile(
     return
 
 
+def _load_chrom_mat(data_dir, chrom):
+    mat_path = os.path.join(data_dir, f"{chrom}.npz")
+    echo(f"loading chromosome {chrom} from {mat_path} ...")
+    try:
+        mat = sp_sparse.load_npz(mat_path)
+    except FileNotFoundError:
+        secho("Warning: ", fg="red", nl=False)
+        echo(
+            f"Couldn't load methylation data for chromosome {chrom} from {mat_path}. "
+            f"Regions on chromosome {chrom} will not be considered."
+        )
+        mat = None
+    return mat
+
+
 def profile(data_dir, regions, output, width, strand_column, label):
     """
     see 'scbs profile --help'
@@ -113,20 +130,15 @@ def profile(data_dir, regions, output, width, strand_column, label):
     unknown_chroms = set()
     prev_chrom = None
     for bed_entries in _iter_bed(regions, strand_col_i=strand_column):
-        chrom, start, end, is_rev_strand = bed_entries
+        chrom, start, end, is_rev_strand, _ = bed_entries
         if chrom in unknown_chroms:
             continue
         if chrom != prev_chrom:
             # we reached a new chrom, load the next matrix
             if chrom in observed_chroms:
                 raise Exception(f"{_get_filepath(regions)} is not sorted!")
-            mat_path = os.path.join(data_dir, f"{chrom}.npz")
-            try:
-                echo(f"loading chromosome {chrom} from {mat_path} ... ")
-                mat = sp_sparse.load_npz(mat_path)
-                # echo("done!")
-            except FileNotFoundError:
-                secho(f"The file {mat_path} does not exist", fg="red")
+            mat = _load_chrom_mat(data_dir, chrom)
+            if mat:
                 unknown_chroms.add(chrom)
                 continue
             echo(f"extracting methylation for regions on chromosome {chrom} ...")
@@ -381,12 +393,12 @@ class Smoother(object):
     def smooth_whole_chrom(self):
         smoothed = np.full(self.cpg_pos.shape, fill_value=np.nan)
         for j, i in enumerate(self.cpg_pos):
-            window = self.mfracs[i - self.hbw : i + self.hbw]
+            window = self.mfracs[i - self.hbw: i + self.hbw]
             nz = ~np.isnan(window)
             try:
                 k = self.kernel[nz]
                 if self.weigh:
-                    w = self.weights[i - self.hbw : i + self.hbw][nz]
+                    w = self.weights[i - self.hbw: i + self.hbw][nz]
                     smooth_val = np.divide(np.sum(window[nz] * k * w), np.sum(k * w))
                 else:
                     smooth_val = np.divide(np.sum(window[nz] * k), np.sum(k))
@@ -424,34 +436,22 @@ def _output_file_handle(raw_path):
     return handle
 
 
-def _load_chrom_mat(data_dir, chrom):
-    mat_path = os.path.join(data_dir, f"{chrom}.npz")
-    echo(f"loading chromosome {chrom} from {mat_path} ...")
-    try:
-        mat = sp_sparse.load_npz(mat_path)
-        cpg_pos_chrom = np.nonzero(mat.getnnz(axis=1))[0]
-    except FileNotFoundError:
-        unknown_chroms.add(chrom)
-        secho("Warning: ", fg="red", nl=False)
-        echo(
-            f"Couldn't load methylation data for chromosome {chrom} from {mat_path}. "
-            f"Regions on chromosome {chrom} will not be considered."
-        )
-        mat = None
-    return mat
-
-
 def _load_smoothed_chrom(data_dir, chrom):
     smoothed_path = os.path.join(data_dir, "smoothed", f"{chrom}.npy")
     if not os.path.isfile(smoothed_path):
         raise Exception(
             "Could not find smoothed methylation data for "
             f"chromosome {chrom} at {smoothed_path} . "
-            "Please run 'scbs smooth' first.")
+            "Please run 'scbs smooth' first."
+        )
     return np.load(smoothed_path)
 
 
-def matrix(data_dir, regions, output, keep_cols=False, bandwidth=2000, use_weights=False):
+def matrix(
+    data_dir, regions, output, keep_other_columns=False,
+):
+    output_header = ["chromosome", "start", "end", "cell_name", "n_meth", "n_obs,"
+                     "meth_frac", "residual", "shrunken_residual"]
     cell_names = []
     with open(os.path.join(data_dir, "column_header.txt"), "r") as col_heads:
         for line in col_heads:
@@ -463,12 +463,15 @@ def matrix(data_dir, regions, output, keep_cols=False, bandwidth=2000, use_weigh
     unknown_chroms = set()
     prev_chrom = None
 
-    # with _output_file_handle(output) as out:
-    for bed_entries in _iter_bed(regions):
-        chrom, start, end = bed_entries[:3]
+    for bed_entries in _iter_bed(regions, keep_cols=keep_other_columns):
+        chrom, start, end, _, other_columns = bed_entries
+        if prev_chrom is None:
+            # only happens once on the very first bed entry: write header
+            if other_columns and keep_other_columns:
+                output_header += [f"bed_col{i + 4}" for i in range(len(other_columns))]
+            output.write(",".join(output_header) + "\n")
         if chrom in unknown_chroms:
             continue
-        # further_bed_entries = ",".join(bed_entries[3:])
         if chrom != prev_chrom:
             # we reached a new chrom, load the next matrix
             if chrom in observed_chroms:
@@ -477,7 +480,7 @@ def matrix(data_dir, regions, output, keep_cols=False, bandwidth=2000, use_weigh
             if mat is None:
                 unknown_chroms.add(chrom)
             else:
-                print(f"extracting methylation for regions on chromosome {chrom} ...")
+                echo(f"extracting methylation for regions on chromosome {chrom} ...")
                 smoothed_cpg_vals = _load_smoothed_chrom(data_dir, chrom)
                 cpg_pos_chrom = np.nonzero(mat.getnnz(axis=1))[0]
             observed_chroms.add(chrom)
@@ -496,31 +499,38 @@ def matrix(data_dir, regions, output, keep_cols=False, bandwidth=2000, use_weigh
         # smoothing and centering:
         cpg_positions = np.nonzero(region.getnnz(axis=1))[0]
         region = region[cpg_positions, :].todense()  # remove all non-CpG bases
-        region = np.where(region==0, np.nan, region)
-        region = np.where(region==-1, 0, region)
+        region = np.where(region == 0, np.nan, region)
+        region = np.where(region == -1, 0, region)
         # smoothing:
-        smooth_start = np.searchsorted(cpg_pos_chrom, start, "left")
+        smooth_start = np.searchsorted(cpg_pos_chrom, start, "left")  # binary search
         smooth_end = np.searchsorted(cpg_pos_chrom, end, "right")
         smoothed = smoothed_cpg_vals[smooth_start:smooth_end]
         # centering, using the smoothed means
-        mvals_centered = np.subtract(region, np.reshape(smoothed, (-1, 1)))
-        # add a 0 pseudocount as a sort of shrinkage
-        mvals_pcount = np.zeros((mvals_centered.shape[0]+1, mvals_centered.shape[1]))
-        mvals_pcount[1:, :] = mvals_centered
-        # calculate methylation % per cell (3 different ways, so we can compare performance)
-        mfracs_raw = np.nanmean(region, axis=0)
-        mfracs_centered = np.nanmean(mvals_centered, axis=0)
-        mfracs_pcount = np.nanmean(mvals_pcount, axis=0)
+        mvals_resid = np.subtract(region, np.reshape(smoothed, (-1, 1)))
+        # calculate methylation % per cell (3 different ways, to compare performance)
+        mfracs = np.nanmean(region, axis=0)
+        resid = np.nanmean(mvals_resid, axis=0)
+        resid_shrunk = np.nansum(mvals_resid, axis=0) / (n_obs + 1)
 
+        # write "count" table
         for c in nz_cells:
-            if keep_cols:
-                s = f"{chrom},{start},{end},{cell_names[c]},{n_meth[c]},{n_obs[c]},{mfracs_raw[c]},{mfracs_centered[c]},{mfracs_pcount[c]},{further_bed_entries}\n"
-            else:
-                s = f"{chrom},{start},{end},{cell_names[c]},{n_meth[c]},{n_obs[c]},{mfracs_raw[c]},{mfracs_centered[c]},{mfracs_pcount[c]}\n"
-            output.write(s)
+            out_vals = [
+                chrom,
+                start,
+                end,
+                cell_names[c],
+                n_meth[c],
+                n_obs[c],
+                mfracs[c],
+                resid[c],
+                resid_shrunk[c],
+            ]
+            if keep_other_columns and other_columns:
+                out_vals += other_columns
+            output.write(",".join(str(v) for v in out_vals) + "\n")
 
-    print(f"Profiled {n_regions} regions.\n")
-    if n_empty_regions / n_regions > .5:
+    echo(f"Profiled {n_regions} regions.\n")
+    if n_empty_regions / n_regions > 0.5:
         secho("Warning - most regions have no coverage in any cell:", fg="red")
     echo(
         f"{n_empty_regions} regions ({n_empty_regions/n_regions:.2%}) "
