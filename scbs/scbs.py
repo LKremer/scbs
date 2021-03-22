@@ -114,15 +114,19 @@ def _load_chrom_mat(data_dir, chrom):
     return mat
 
 
-def profile(data_dir, regions, output, width, strand_column, label):
-    """
-    see 'scbs profile --help'
-    """
+def _parse_cell_names(data_dir):
     cell_names = []
     with open(os.path.join(data_dir, "column_header.txt"), "r") as col_heads:
         for line in col_heads:
             cell_names.append(line.strip())
+    return cell_names
 
+
+def profile(data_dir, regions, output, width, strand_column, label):
+    """
+    see 'scbs profile --help'
+    """
+    cell_names = _parse_cell_names(data_dir)
     extend_by = width // 2
     n_regions = 0  # count the total number of valid regions in the bed file
     n_empty_regions = 0  # count the number of regions that don't overlap a CpG
@@ -391,8 +395,8 @@ class Smoother(object):
         return
 
     def smooth_whole_chrom(self):
-        smoothed = np.full(self.cpg_pos.shape, fill_value=np.nan)
-        for j, i in enumerate(self.cpg_pos):
+        smoothed = {}
+        for i in self.cpg_pos:
             window = self.mfracs[i - self.hbw: i + self.hbw]
             nz = ~np.isnan(window)
             try:
@@ -402,11 +406,11 @@ class Smoother(object):
                     smooth_val = np.divide(np.sum(window[nz] * k * w), np.sum(k * w))
                 else:
                     smooth_val = np.divide(np.sum(window[nz] * k), np.sum(k))
-                smoothed[j] = smooth_val
+                smoothed[i] = smooth_val
             except IndexError:
                 # when the smoothing bandwith is out of bounds of
                 # the chromosome... needs fixing eventually
-                smoothed[j] = np.nan
+                smoothed[i] = np.nan
         return smoothed
 
 
@@ -420,7 +424,9 @@ def smooth(data_dir, bandwidth, use_weights):
         sm = Smoother(mat, bandwidth, use_weights)
         echo(f"Smoothing chromosome {chrom} ...")
         smoothed_chrom = sm.smooth_whole_chrom()
-        np.save(os.path.join(out_dir, f"{chrom}.npy"), smoothed_chrom)
+        with open(os.path.join(out_dir, f"{chrom}.csv"), "w") as smooth_out:
+            for pos, smooth_val in smoothed_chrom.items():
+                smooth_out.write(f"{pos},{smooth_val}\n")
     secho(f"\nSuccessfully wrote smoothed methylation data to {out_dir}.", fg="green")
     return
 
@@ -437,14 +443,19 @@ def _output_file_handle(raw_path):
 
 
 def _load_smoothed_chrom(data_dir, chrom):
-    smoothed_path = os.path.join(data_dir, "smoothed", f"{chrom}.npy")
+    smoothed_path = os.path.join(data_dir, "smoothed", f"{chrom}.csv")
     if not os.path.isfile(smoothed_path):
         raise Exception(
             "Could not find smoothed methylation data for "
             f"chromosome {chrom} at {smoothed_path} . "
             "Please run 'scbs smooth' first."
         )
-    return np.load(smoothed_path)
+    out_dict = {}
+    with open(smoothed_path, "r") as smooth_file:
+        for line in smooth_file:
+            pos, smooth_val = line.strip().split(",")
+            out_dict[int(pos)] = float(smooth_val)
+    return out_dict
 
 
 def matrix(
@@ -452,11 +463,7 @@ def matrix(
 ):
     output_header = ["chromosome", "start", "end", "cell_name", "n_meth", "n_obs,"
                      "meth_frac", "residual", "shrunken_residual"]
-    cell_names = []
-    with open(os.path.join(data_dir, "column_header.txt"), "r") as col_heads:
-        for line in col_heads:
-            cell_names.append(line.strip())
-
+    cell_names = _parse_cell_names(data_dir)
     n_regions = 0  # count the total number of valid regions in the bed file
     n_empty_regions = 0  # count the number of regions that don't overlap a CpG
     observed_chroms = set()
@@ -502,9 +509,10 @@ def matrix(
         region = np.where(region == 0, np.nan, region)
         region = np.where(region == -1, 0, region)
         # smoothing:
-        smooth_start = np.searchsorted(cpg_pos_chrom, start, "left")  # binary search
-        smooth_end = np.searchsorted(cpg_pos_chrom, end, "right")
-        smoothed = smoothed_cpg_vals[smooth_start:smooth_end]
+        # smooth_start = np.searchsorted(cpg_pos_chrom, start, "left")  # binary search
+        # smooth_end = np.searchsorted(cpg_pos_chrom, end, "right")
+        smoothed = np.array([smoothed_cpg_vals[start + c] for c in cpg_positions])
+        # smoothed = smoothed_cpg_vals[smooth_start:smooth_end]
         # centering, using the smoothed means
         mvals_resid = np.subtract(region, np.reshape(smoothed, (-1, 1)))
         # calculate methylation % per cell (3 different ways, to compare performance)
@@ -536,4 +544,64 @@ def matrix(
         f"{n_empty_regions} regions ({n_empty_regions/n_regions:.2%}) "
         f"contained no covered methylation site."
     )
+    return
+
+
+def _get_smoothed_var(mat, mfracs, half_bw, smoothed_vals, i):
+    window = mfracs[i - half_bw:i + half_bw]
+    nz = ~np.isnan(window)
+
+    region = mat[i - half_bw:i + half_bw, :]
+    n_obs = region.getnnz(axis=0)
+    region = region[nz, :].todense()  # remove all non-CpG bases
+    region = np.where(region==0, np.nan, region)
+    region = np.where(region==-1, 0, region)
+
+    cpg_pos = np.arange(i - half_bw, i + half_bw)
+    smooth_avg = np.array([smoothed_vals[p] for p in cpg_pos[nz]])
+
+    resid = np.subtract(region, np.reshape(smooth_avg, (-1, 1)))
+    assert np.nansum(resid, axis=0).shape == n_obs.shape
+    return np.nansum(resid, axis=0) / (n_obs + 1)
+
+
+def scan(data_dir, output, bandwidth, stepsize, var_threshold):
+    half_bw = bandwidth // 2
+    for mat_path in sorted(glob.glob(os.path.join(data_dir, "*.npz"))):
+        chrom = os.path.basename(os.path.splitext(mat_path)[0])
+        mat = _load_chrom_mat(data_dir, chrom)
+        smoothed_cpg_vals = _load_smoothed_chrom(data_dir, chrom)
+        n_obs = mat.getnnz(axis=1)
+        n_meth = np.ravel(np.sum(mat > 0, axis=1))
+        mfracs = np.divide(n_meth, n_obs)
+        cpg_pos_chrom = np.nonzero(mat.getnnz(axis=1))[0]
+
+        start, end = bandwidth, mat.shape[0] - bandwidth
+        genomic_pos = []
+        smoothed_var = []
+        for pos in range(start, end, stepsize):
+            if not pos % 5e6:
+                echo(f"chromosome {chrom} is {100 * pos / end:.3}% done.")
+            genomic_pos.append(pos)
+            sm = _get_smoothed_var(mat, mfracs, half_bw, smoothed_cpg_vals, pos)
+            smoothed_var.append(sm)
+
+        # variance peak calling:
+        peak_starts = []
+        peak_ends = []
+        in_peak = False
+        for var, pos in zip(smoothed_var, genomic_pos):
+            if var > var_threshold:
+                if not in_peak:
+                    # entering new peak
+                    in_peak = True
+                    peak_starts.append(pos - half_bw)
+            else:
+                if in_peak:
+                    in_peak = False
+                    peak_ends.append(pos + half_bw)
+
+    for ps, pe in zip(peak_starts, peak_ends):
+        bed_entry = f"{chrom},{ps},{pe}\n"
+        output.write(bed_entry)
     return

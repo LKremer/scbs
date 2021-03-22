@@ -1,7 +1,7 @@
 import click
 from click import echo, style
 from datetime import datetime, timedelta
-from scbs.scbs import _get_filepath, profile, prepare, smooth, matrix
+from scbs.scbs import _get_filepath, profile, prepare, smooth, matrix, scan
 from click_help_colors import HelpColorsGroup
 
 
@@ -191,12 +191,10 @@ def profile_cli(**kwargs):
     type=click.IntRange(min=1, max=1e6),
     metavar="INTEGER",
     show_default=True,
-    help="Smoothing bandwidth.",
+    help="Smoothing bandwidth in basepairs.",
 )
-@click.option(
-    "--keep-columns", is_flag=True,
-    help="To keep additional columns of the input bed-file."
-)
+@click.option("--use-weights", is_flag=True,
+    help="Use this to weigh each methylation site by log1p(coverage).")
 def smooth_cli(**kwargs):
     timer = Timer(label="smooth")
     _print_kwargs(kwargs)
@@ -210,7 +208,8 @@ def smooth_cli(**kwargs):
     help=f"""
     From single cell methylation or NOMe-seq data, calculates the average methylation
     in genomic regions for every cell. The output is a long table that can be used e.g.
-    for dimensionality reduction or clustering.
+    for dimensionality reduction or clustering, analogous to a count matrix in
+    scRNA-seq.
 
     {style("REGIONS", fg="green")} is an alphabetically sorted (!) .bed file of regions
     for which methylation will be quantified in every cell.
@@ -223,7 +222,7 @@ def smooth_cli(**kwargs):
     written. Should end with '.csv'. The table is in long format and missing values
     are omitted.
     """,
-    short_help="make a 'count' matrix",
+    short_help="Make a methylation matrix, similar to a count matrix in scRNA-seq",
     no_args_is_help=True,
 )
 @click.argument("regions", type=click.File("r"))
@@ -233,7 +232,7 @@ def smooth_cli(**kwargs):
 )
 @click.argument("output", type=click.File("w"))
 @click.option("--keep-other-columns", is_flag=True,
-    help="Use this to keep other columns that the input bed-file may contain.")
+    help="Use this to keep any other columns that the input bed-file may contain.")
 def matrix_cli(**kwargs):
     timer = Timer(label="matrix")
     _print_kwargs(kwargs)
@@ -241,31 +240,74 @@ def matrix_cli(**kwargs):
     timer.stop()
 
 
-
-
-
-
-
-# CLI template:
-@click.command(
+# scan command
+@cli.command(
+    name="scan",
     help=f"""
     Blabla
 
-    {style("INPUT", fg="green")} blabla
+    {style("DATA_DIR", fg="green")} blabla
 
     {style("OUTPUT", fg="green")} blabla
     """,
-    short_help="template for dev",
+    short_help="variance smooth scanning",
+    no_args_is_help=True,
 )
-@click.argument("input", type=click.File("r"))
+@click.argument(
+    "data-dir",
+    type=click.Path(exists=True, dir_okay=True, file_okay=False, readable=True),
+)
 @click.argument("output", type=click.File("w"))
-@click.option("-o", "--option", type=int, default=4, show_default=True)
-@click.option("--flag", is_flag=True)
-def template(**kwargs):
-    timer = Timer(label="template")
+@click.option(
+    "-bw",
+    "--bandwidth",
+    default=2000,
+    type=click.IntRange(min=1, max=1e6),
+    metavar="INTEGER",
+    show_default=True,
+    help="Stepsize of the variance windows in basepairs.",
+)
+@click.option(
+    "--stepsize",
+    default=50,
+    type=click.IntRange(min=1, max=1e6),
+    metavar="INTEGER",
+    show_default=True,
+    help="Bandwidth of the variance windows in basepairs.",
+)
+@click.option(
+    "--var-threshold",
+    default=0.065,
+    show_default=True,
+    help="Variance threshold",
+)
+def scan_cli(**kwargs):
+    timer = Timer(label="scan")
     _print_kwargs(kwargs)
-    print(**kwargs)
+    scan(**kwargs)
     timer.stop()
+
+
+# CLI template:
+# @click.command(
+#     help=f"""
+#     Blabla
+
+#     {style("INPUT", fg="green")} blabla
+
+#     {style("OUTPUT", fg="green")} blabla
+#     """,
+#     short_help="template for dev",
+# )
+# @click.argument("input", type=click.File("r"))
+# @click.argument("output", type=click.File("w"))
+# @click.option("-o", "--option", type=int, default=4, show_default=True)
+# @click.option("--flag", is_flag=True)
+# def template(**kwargs):
+#     timer = Timer(label="template")
+#     _print_kwargs(kwargs)
+#     print(**kwargs)
+#     timer.stop()
 
 
 # cli.add_command(matrix_cli, name="matrix")
