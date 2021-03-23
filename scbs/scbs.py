@@ -570,8 +570,8 @@ def scan(data_dir, output, bandwidth, stepsize, var_threshold, chromosome):
     half_bw = bandwidth // 2
     if chromosome:
         # run on a single chromosome
-        chrom_paths = os.path.join(data_dir, f"{chromosome}.npz")
-        secho(f"Searching only on chromosome {chrom_paths}", fg="green")
+        chrom_paths = [os.path.join(data_dir, f"{chromosome}.npz")]
+        secho(f"Searching only on chromosome {chromosome}", fg="green")
     else:
         # run on all chromosomes
         chrom_paths = sorted(glob.glob(os.path.join(data_dir, "*.npz")))
@@ -588,15 +588,16 @@ def scan(data_dir, output, bandwidth, stepsize, var_threshold, chromosome):
         mfracs = np.divide(n_meth, n_obs)
         cpg_pos_chrom = np.nonzero(mat.getnnz(axis=1))[0]
 
-        start, end = cpg_pos_chrom[0] + half_bw + 1, cpg_pos_chrom[-1] - half_bw - 1
+        start = cpg_pos_chrom[0] + half_bw + 1
+        end = cpg_pos_chrom[-1] - half_bw - 1
         genomic_pos = []
         smoothed_var = []
         for pos in range(start, end, stepsize):
-            if not pos % 5e6:
-                echo(f"chromosome {chrom} is {100 * pos / end:.3}% done.")
             genomic_pos.append(pos)
             sm = _get_smoothed_var(mat, mfracs, half_bw, smoothed_cpg_vals, pos)
             smoothed_var.append(sm)
+            if len(smoothed_var) % 100_000 == 0:
+                echo(f"chromosome {chrom} is {100 * (pos-start) / (end-start):.3}% scanned.")
 
         # variance peak calling:
         peak_starts = []
