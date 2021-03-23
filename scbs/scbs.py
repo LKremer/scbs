@@ -588,7 +588,7 @@ def scan(data_dir, output, bandwidth, stepsize, var_threshold, chromosome):
         mfracs = np.divide(n_meth, n_obs)
         cpg_pos_chrom = np.nonzero(mat.getnnz(axis=1))[0]
 
-        start, end = bandwidth, mat.shape[0] - bandwidth
+        start, end = cpg_pos_chrom[0] + half_bw + 1, cpg_pos_chrom[-1] - half_bw - 1
         genomic_pos = []
         smoothed_var = []
         for pos in range(start, end, stepsize):
