@@ -566,10 +566,21 @@ def _get_smoothed_var(mat, mfracs, half_bw, smoothed_vals, i):
     return np.nanvar(resid_shrunk)
 
 
-def scan(data_dir, output, bandwidth, stepsize, var_threshold):
+def scan(data_dir, output, bandwidth, stepsize, var_threshold, chromosome):
     half_bw = bandwidth // 2
-    for mat_path in sorted(glob.glob(os.path.join(data_dir, "*.npz"))):
-        chrom = os.path.basename(os.path.splitext(mat_path)[0])
+    if chromosome:
+        # run on a single chromosome
+        chrom_paths = os.path.join(data_dir, f"{chromosome}.npz")
+        secho(f"Searching only on chromosome {chrom_paths}", fg="green")
+    else:
+        # run on all chromosomes
+        chrom_paths = sorted(glob.glob(os.path.join(data_dir, "*.npz")))
+
+    for mat_path in chrom_paths:
+        if chromosome:
+            chrom = chromosome
+        else:
+            chrom = os.path.basename(os.path.splitext(mat_path)[0])
         mat = _load_chrom_mat(data_dir, chrom)
         smoothed_cpg_vals = _load_smoothed_chrom(data_dir, chrom)
         n_obs = mat.getnnz(axis=1)
@@ -603,6 +614,6 @@ def scan(data_dir, output, bandwidth, stepsize, var_threshold):
                     peak_ends.append(pos + half_bw)
 
     for ps, pe in zip(peak_starts, peak_ends):
-        bed_entry = f"{chrom},{ps},{pe}\n"
+        bed_entry = f"{chrom}\t{ps}\t{pe}\n"
         output.write(bed_entry)
     return
