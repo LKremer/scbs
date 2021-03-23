@@ -562,7 +562,8 @@ def _get_smoothed_var(mat, mfracs, half_bw, smoothed_vals, i):
 
     resid = np.subtract(region, np.reshape(smooth_avg, (-1, 1)))
     assert np.nansum(resid, axis=0).shape == n_obs.shape
-    return np.nansum(resid, axis=0) / (n_obs + 1)
+    resid_shrunk = np.nansum(resid, axis=0) / (n_obs + 1)
+    return np.nanvar(resid_shrunk)
 
 
 def scan(data_dir, output, bandwidth, stepsize, var_threshold):

@@ -5,13 +5,14 @@ description = "command line utility to work with single cell methylation data"
 authors = ["Lukas PM Kremer <L-Kremer@web.de>"]
 
 [tool.poetry.dependencies]
-python = "^3.8"
+python = ">=3.8,<3.10"
 click = "^7.1.2"
 numpy = "^1.20.1"
 scipy = "^1.6.1"
 pandas = "^1.2.3"
 statsmodels = "^0.12.2"
 click-help-colors = "^0.9"
+numba = "^0.53.0"
 
 [tool.poetry.dev-dependencies]
 pytest = "^5.2"
