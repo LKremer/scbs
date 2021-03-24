@@ -21,7 +21,7 @@ or to get help for a subcommand, e.g. "prepare":
 scbs prepare --help
 ```
 
-# TODO (in order of importance):
+## TODO (in order of importance):
 - finish implementing "scbs scan" (overlapping variable windows should be merged automatically, the variance threshold should be estimated from the data itself e.g. by taking the 5% most variable parts of the genome instead of regions above a hard variance threshold)
 - allow other input formats (currently only Bismark is supported)
 - make things fast with numba (especially "scbs scan")
