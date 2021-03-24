@@ -27,4 +27,4 @@ scbs prepare --help
 - make things fast with numba (especially "scbs scan")
 - test on simulated data and other datasets
 - write basic tests & docs
-- add further functionality (e.g. SVD, clustering, testing for differential methylation between clusters...)
+- add further functionality (e.g. SVD, plotting, clustering, testing for differential methylation between clusters...)
