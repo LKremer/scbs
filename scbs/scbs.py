@@ -8,6 +8,8 @@ import scipy.sparse as sp_sparse
 from statsmodels.stats.proportion import proportion_confint
 from click import echo, secho
 
+# from numba import prange, jit, njit, vectorize
+
 
 # ignore division by 0 and division by NaN error
 np.seterr(divide="ignore", invalid="ignore")
@@ -397,12 +399,12 @@ class Smoother(object):
     def smooth_whole_chrom(self):
         smoothed = {}
         for i in self.cpg_pos:
-            window = self.mfracs[i - self.hbw: i + self.hbw]
+            window = self.mfracs[i - self.hbw : i + self.hbw]
             nz = ~np.isnan(window)
             try:
                 k = self.kernel[nz]
                 if self.weigh:
-                    w = self.weights[i - self.hbw: i + self.hbw][nz]
+                    w = self.weights[i - self.hbw : i + self.hbw][nz]
                     smooth_val = np.divide(np.sum(window[nz] * k * w), np.sum(k * w))
                 else:
                     smooth_val = np.divide(np.sum(window[nz] * k), np.sum(k))
@@ -459,10 +461,21 @@ def _load_smoothed_chrom(data_dir, chrom):
 
 
 def matrix(
-    data_dir, regions, output, keep_other_columns=False,
+    data_dir,
+    regions,
+    output,
+    keep_other_columns=False,
 ):
-    output_header = ["chromosome", "start", "end", "cell_name", "n_meth", "n_obs,"
-                     "meth_frac", "residual", "shrunken_residual"]
+    output_header = [
+        "chromosome",
+        "start",
+        "end",
+        "cell_name",
+        "n_meth",
+        "n_obs," "meth_frac",
+        "residual",
+        "shrunken_residual",
+    ]
     cell_names = _parse_cell_names(data_dir)
     n_regions = 0  # count the total number of valid regions in the bed file
     n_empty_regions = 0  # count the number of regions that don't overlap a CpG
@@ -489,7 +502,6 @@ def matrix(
             else:
                 echo(f"extracting methylation for regions on chromosome {chrom} ...")
                 smoothed_cpg_vals = _load_smoothed_chrom(data_dir, chrom)
-                cpg_pos_chrom = np.nonzero(mat.getnnz(axis=1))[0]
             observed_chroms.add(chrom)
             prev_chrom = chrom
 
@@ -508,11 +520,8 @@ def matrix(
         region = region[cpg_positions, :].todense()  # remove all non-CpG bases
         region = np.where(region == 0, np.nan, region)
         region = np.where(region == -1, 0, region)
-        # smoothing:
-        # smooth_start = np.searchsorted(cpg_pos_chrom, start, "left")  # binary search
-        # smooth_end = np.searchsorted(cpg_pos_chrom, end, "right")
+        # load smoothed values
         smoothed = np.array([smoothed_cpg_vals[start + c] for c in cpg_positions])
-        # smoothed = smoothed_cpg_vals[smooth_start:smooth_end]
         # centering, using the smoothed means
         mvals_resid = np.subtract(region, np.reshape(smoothed, (-1, 1)))
         # calculate methylation % per cell (3 different ways, to compare performance)
@@ -547,15 +556,18 @@ def matrix(
     return
 
 
-def _get_smoothed_var(mat, mfracs, half_bw, smoothed_vals, i):
-    window = mfracs[i - half_bw:i + half_bw]
+def _calc_residual_var(mat, mfracs, half_bw, smoothed_vals, i):
+    """
+    Calculate the variance of shrunken residuals for a given windows
+    """
+    window = mfracs[i - half_bw : i + half_bw]
     nz = ~np.isnan(window)
 
-    region = mat[i - half_bw:i + half_bw, :]
+    region = mat[i - half_bw : i + half_bw, :]
     n_obs = region.getnnz(axis=0)
     region = region[nz, :].todense()  # remove all non-CpG bases
-    region = np.where(region==0, np.nan, region)
-    region = np.where(region==-1, 0, region)
+    region = np.where(region == 0, np.nan, region)
+    region = np.where(region == -1, 0, region)
 
     cpg_pos = np.arange(i - half_bw, i + half_bw)
     smooth_avg = np.array([smoothed_vals[p] for p in cpg_pos[nz]])
@@ -588,16 +600,21 @@ def scan(data_dir, output, bandwidth, stepsize, var_threshold, chromosome):
         mfracs = np.divide(n_meth, n_obs)
         cpg_pos_chrom = np.nonzero(mat.getnnz(axis=1))[0]
 
+        # shift windows along the chromosome and calculate the variance for each window.
+        # this is very slow but could be very fast with numba! easy to parallelize
         start = cpg_pos_chrom[0] + half_bw + 1
         end = cpg_pos_chrom[-1] - half_bw - 1
-        genomic_pos = []
         smoothed_var = []
+        genomic_pos = []
         for pos in range(start, end, stepsize):
             genomic_pos.append(pos)
-            sm = _get_smoothed_var(mat, mfracs, half_bw, smoothed_cpg_vals, pos)
+            sm = _calc_residual_var(mat, mfracs, half_bw, smoothed_cpg_vals, pos)
             smoothed_var.append(sm)
             if len(smoothed_var) % 100_000 == 0:
-                echo(f"chromosome {chrom} is {100 * (pos-start) / (end-start):.3}% scanned.")
+                echo(
+                    f"chromosome {chrom} is {100 * (pos-start) / (end-start):.3}% "
+                    "scanned."
+                )
 
         # variance peak calling:
         peak_starts = []
@@ -617,4 +634,11 @@ def scan(data_dir, output, bandwidth, stepsize, var_threshold, chromosome):
     for ps, pe in zip(peak_starts, peak_ends):
         bed_entry = f"{chrom}\t{ps}\t{pe}\n"
         output.write(bed_entry)
+    if len(peak_starts) > 0:
+        secho(f"Wrote {len(peak_starts)} variable bins to {output.name}.", fg="green")
+    else:
+        secho(
+            f"Found no variable regions so I'm not writing anything to {output.name}.",
+            fg="red",
+        )
     return

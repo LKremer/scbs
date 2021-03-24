@@ -193,8 +193,11 @@ def profile_cli(**kwargs):
     show_default=True,
     help="Smoothing bandwidth in basepairs.",
 )
-@click.option("--use-weights", is_flag=True,
-    help="Use this to weigh each methylation site by log1p(coverage).")
+@click.option(
+    "--use-weights",
+    is_flag=True,
+    help="Use this to weigh each methylation site by log1p(coverage).",
+)
 def smooth_cli(**kwargs):
     timer = Timer(label="smooth")
     _print_kwargs(kwargs)
@@ -231,8 +234,11 @@ def smooth_cli(**kwargs):
     type=click.Path(exists=True, dir_okay=True, file_okay=False, readable=True),
 )
 @click.argument("output", type=click.File("w"))
-@click.option("--keep-other-columns", is_flag=True,
-    help="Use this to keep any other columns that the input bed-file may contain.")
+@click.option(
+    "--keep-other-columns",
+    is_flag=True,
+    help="Use this to keep any other columns that the input bed-file may contain.",
+)
 def matrix_cli(**kwargs):
     timer = Timer(label="matrix")
     _print_kwargs(kwargs)
@@ -246,7 +252,7 @@ def matrix_cli(**kwargs):
     help=f"""
     Scans the whole genome for regions of variable methylation. This works by sliding
     a window across the genome, calculating the variance of methylation per window,
-    and selecting windows above a variance threshold. 
+    and selecting windows above a variance threshold.
 
     {style("DATA_DIR", fg="green")} is the directory containing the methylation
     matrices produced by running 'scbs prepare', as well as the smoothed methylation
@@ -291,8 +297,7 @@ def matrix_cli(**kwargs):
     show_default=True,
     type=str,
     nargs=1,
-    help="Specify on which chromosome to scan for variable regions.  "
-         "[defaul: all]",
+    help="Specify on which chromosome to scan for variable regions.  " "[defaul: all]",
 )
 def scan_cli(**kwargs):
     timer = Timer(label="scan")
