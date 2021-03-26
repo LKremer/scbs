@@ -175,7 +175,7 @@ def profile_cli(**kwargs):
     The smoothed methylation values will be written to
     {style("DATA_DIR/smoothed/", fg="green")}.
     """,
-    short_help="Smooth sc-methylation data",
+    short_help="Smooth the pseudobulk of single cell methylation data",
     no_args_is_help=True,
 )
 @click.argument(
@@ -261,7 +261,7 @@ def matrix_cli(**kwargs):
     {style("OUTPUT", fg="green")} is the path of the output file in '.bed' format,
     containing the variable windows that were found.
     """,
-    short_help="find regions with variable methylation",
+    short_help="Find regions with variable methylation (work in progress)",
     no_args_is_help=True,
 )
 @click.argument(

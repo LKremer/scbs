@@ -144,7 +144,7 @@ def profile(data_dir, regions, output, width, strand_column, label):
             if chrom in observed_chroms:
                 raise Exception(f"{_get_filepath(regions)} is not sorted!")
             mat = _load_chrom_mat(data_dir, chrom)
-            if mat:
+            if mat is None:
                 unknown_chroms.add(chrom)
                 continue
             echo(f"extracting methylation for regions on chromosome {chrom} ...")
