@@ -9,7 +9,7 @@ git clone https://github.com/LKremer/scbs.git
 ```
 python3 -m pip install scbs/dist/scbs-0.1.1.tar.gz
 ```
-The command line interface should now be available when typing the command "scbs" in a terminal.
+The command line interface should now be available when typing the command "scbs" in a terminal. If it isn't, restart the terminal or `source ~/.bashrc`.
 
 ## Usage
 Check the help in the command line interface like this:
