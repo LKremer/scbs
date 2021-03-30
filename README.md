@@ -23,6 +23,13 @@ or to get help for a subcommand, e.g. "prepare":
 scbs prepare --help
 ```
 
+## Troubleshooting
+If you encounter a "too many open files" error during `scbs prepare` (`OSError: [Errno 24] Too many open files`), you need to increase the maximum number of files that can be opened. In Unix systems, try `ulimit -n 9999`.
+
+```
+scbs prepare --help
+```
+
 ## TODO (in order of importance):
 - finish implementing "scbs scan" (overlapping variable windows should be merged automatically, the variance threshold should be estimated from the data itself e.g. by taking the 5% most variable parts of the genome instead of regions above a hard variance threshold)
 - allow other input formats (currently only Bismark is supported)
