@@ -144,7 +144,7 @@ def profile(data_dir, regions, output, width, strand_column, label):
             if chrom in observed_chroms:
                 raise Exception(f"{_get_filepath(regions)} is not sorted!")
             mat = _load_chrom_mat(data_dir, chrom)
-            if mat:
+            if mat is None:
                 unknown_chroms.add(chrom)
                 continue
             echo(f"extracting methylation for regions on chromosome {chrom} ...")
@@ -285,7 +285,7 @@ def _dump_dok_files(fpaths, input_format, n_cells, header, output_dir):
     dok_files = {}
     chrom_sizes = {}
     for cell_n, cov_file in enumerate(fpaths):
-        if cell_n % 100 == 0:
+        if cell_n % 50 == 0:
             echo("{0:.2f}% done...".format(100 * cell_n / n_cells))
         for line_vals in _iterate_covfile(cov_file, header):
             n_meth, n_unmeth = int(line_vals[m_col]), int(line_vals[u_col])
