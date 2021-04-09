@@ -279,10 +279,10 @@ def _write_column_names(output_dir, cell_names, fname="column_header.txt"):
     return out_path
 
 
-def _dump_dok_files(fpaths, input_format, n_cells, header, output_dir):
+def _dump_coo_files(fpaths, input_format, n_cells, header, output_dir):
     os.makedirs(output_dir, exist_ok=True)
     c_col, p_col, m_col, u_col = [f - 1 for f in input_format]
-    dok_files = {}
+    coo_files = {}
     chrom_sizes = {}
     for cell_n, cov_file in enumerate(fpaths):
         if cell_n % 50 == 0:
@@ -294,19 +294,19 @@ def _dump_dok_files(fpaths, input_format, n_cells, header, output_dir):
             meth_value = 1 if n_meth > 0 else -1
             genomic_pos = int(line_vals[p_col])
             chrom = line_vals[c_col]
-            if chrom not in dok_files:
-                dok_path = os.path.join(output_dir, f"{chrom}.dok")
-                dok_files[chrom] = open(dok_path, "w")
+            if chrom not in coo_files:
+                coo_path = os.path.join(output_dir, f"{chrom}.coo")
+                coo_files[chrom] = open(coo_path, "w")
                 chrom_sizes[chrom] = 0
             if genomic_pos > chrom_sizes[chrom]:
                 chrom_sizes[chrom] = genomic_pos
-            dok_files[chrom].write(f"{genomic_pos},{cell_n},{meth_value}\n")
-    for fhandle in dok_files.values():
+            coo_files[chrom].write(f"{genomic_pos},{cell_n},{meth_value}\n")
+    for fhandle in coo_files.values():
         # maybe somehow use try/finally or "with" to make sure
         # they're closed even when crashing
         fhandle.close()
     echo("100% done.")
-    return dok_files, chrom_sizes
+    return coo_files, chrom_sizes
 
 
 def _write_summary_stats(data_dir, cell_names, n_obs, n_meth):
@@ -331,13 +331,13 @@ def prepare(input_files, data_dir, input_format, header):
     n_obs_cell = np.zeros(n_cells, dtype=np.int64)
     n_meth_cell = np.zeros(n_cells, dtype=np.int64)
 
-    # For each chromosome, we first make a sparse matrix in DOK (dictionary of keys)
-    # format, because DOK can be constructed value by value, without knowing the
+    # For each chromosome, we first make a sparse matrix in COO (coordinate)
+    # format, because COO can be constructed value by value, without knowing the
     # dimensions beforehand. This means we can construct it cell by cell.
-    # We dump the DOK to hard disk to save RAM and then later convert each DOK to a
+    # We dump the COO to hard disk to save RAM and then later convert each COO to a
     # more efficient format (CSR).
     echo(f"Processing {n_cells} methylation files...")
-    dok_files, chrom_sizes = _dump_dok_files(
+    coo_files, chrom_sizes = _dump_coo_files(
         input_files, input_format, n_cells, header, data_dir
     )
     echo(
@@ -345,27 +345,27 @@ def prepare(input_files, data_dir, input_format, header):
         "sparse row' (CSR) matrix format for future use."
     )
 
-    # read each DOK file and convert the matrix to CSR format.
-    for chrom in dok_files.keys():
+    # read each COO file and convert the matrix to CSR format.
+    for chrom in coo_files.keys():
         # create empty matrix
         chrom_size = chrom_sizes[chrom]
-        mat = sp_sparse.dok_matrix((chrom_size + 1, n_cells), dtype=np.int8)
         echo(f"Populating {chrom_size} x {n_cells} matrix for chromosome {chrom}...")
-        # populate with values from temporary dok file
-        dok_path = os.path.join(data_dir, f"{chrom}.dok")
-        with open(dok_path, "r") as fhandle:
-            for line in fhandle:
-                genomic_pos, cell_n, meth_value = line.strip().split(",")
-                mat[int(genomic_pos), int(cell_n)] = int(meth_value)
+        # populate with values from temporary COO file
+        coo_path = os.path.join(data_dir, f"{chrom}.coo")
         mat_path = os.path.join(data_dir, f"{chrom}.npz")
-        echo(f"Writing to {mat_path} ...")
-        mat = mat.tocsr()  # convert from DOK to CSR format
+        coo = np.loadtxt(coo_path, delimiter = ",")
+        mat = sp_sparse.coo_matrix((coo[:,2], (coo[:,0], coo[:,1])),
+                                   shape=(chrom_size + 1, n_cells),
+                                   dtype=np.int8)
+        echo(f"Converting from COO to CSR...")
+        mat = mat.tocsr()  # convert from COO to CSR format
 
         n_obs_cell += mat.getnnz(axis=0)
         n_meth_cell += np.ravel(np.sum(mat > 0, axis=0))
 
+        echo(f"Writing to {mat_path} ...")
         sp_sparse.save_npz(mat_path, mat)
-        os.remove(dok_path)  # delete temporary .dok file
+        os.remove(coo_path)  # delete temporary .coo file
 
     colname_path = _write_column_names(data_dir, cell_names)
     echo(f"\nWrote matrix column names to {colname_path}")
@@ -373,7 +373,7 @@ def prepare(input_files, data_dir, input_format, header):
     echo(f"Wrote summary stats for each cell to {stats_path}")
     secho(
         f"\nSuccessfully stored methylation data for {n_cells} cells "
-        f"with {len(dok_files.keys())} chromosomes.",
+        f"with {len(coo_files.keys())} chromosomes.",
         fg="green",
     )
     return

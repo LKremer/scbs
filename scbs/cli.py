@@ -67,6 +67,10 @@ def cli():
 
     {style("DATA_DIR", fg="green")} is the output directory
     where the methylation data will be stored.
+
+    Note: If you have many cells and encounter a "too many open files"-
+    error, you need to increase the open file limit with e.g.
+    'ulimit -n 9999'.
     """,
     short_help="First step: Collect and store sc-methylation data for quick access",
     no_args_is_help=True,
