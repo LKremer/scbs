@@ -18,6 +18,10 @@ Just use `--upgrade` when installing the package, otherwise it's the same proces
 ```
 python3 -m pip install --upgrade scbs/dist/scbs-0.1.2.tar.gz
 ```
+Afterwards, make sure that the latest version is correctly installed:
+```
+scbs --version
+```
 
 ## Usage
 Check the help in the command line interface like this:
