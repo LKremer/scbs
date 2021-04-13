@@ -353,10 +353,12 @@ def prepare(input_files, data_dir, input_format, header):
         # populate with values from temporary COO file
         coo_path = os.path.join(data_dir, f"{chrom}.coo")
         mat_path = os.path.join(data_dir, f"{chrom}.npz")
-        coo = np.loadtxt(coo_path, delimiter = ",")
-        mat = sp_sparse.coo_matrix((coo[:,2], (coo[:,0], coo[:,1])),
-                                   shape=(chrom_size + 1, n_cells),
-                                   dtype=np.int8)
+        coo = np.loadtxt(coo_path, delimiter=",")
+        mat = sp_sparse.coo_matrix(
+            (coo[:, 2], (coo[:, 0], coo[:, 1])),
+            shape=(chrom_size + 1, n_cells),
+            dtype=np.int8,
+        )
         echo(f"Converting from COO to CSR...")
         mat = mat.tocsr()  # convert from COO to CSR format
 
@@ -556,26 +558,55 @@ def matrix(
     return
 
 
-def _calc_residual_var(mat, mfracs, half_bw, smoothed_vals, i):
+def _calc_residual_var(mat, mfracs, smoothed_vals, start, end):
     """
     Calculate the variance of shrunken residuals for a given windows
     """
-    window = mfracs[i - half_bw : i + half_bw]
+    window = mfracs[start:end]
     nz = ~np.isnan(window)
+    if not np.sum(nz):
+        return np.nan
 
-    region = mat[i - half_bw : i + half_bw, :]
+    region = mat[start:end, :]
     n_obs = region.getnnz(axis=0)
     region = region[nz, :].todense()  # remove all non-CpG bases
     region = np.where(region == 0, np.nan, region)
     region = np.where(region == -1, 0, region)
 
-    cpg_pos = np.arange(i - half_bw, i + half_bw)
+    cpg_pos = np.arange(start, end)
     smooth_avg = np.array([smoothed_vals[p] for p in cpg_pos[nz]])
 
     resid = np.subtract(region, np.reshape(smooth_avg, (-1, 1)))
     assert np.nansum(resid, axis=0).shape == n_obs.shape
     resid_shrunk = np.nansum(resid, axis=0) / (n_obs + 1)
     return np.nanvar(resid_shrunk)
+
+
+def _find_peaks(smoothed_vars, swindow_centers, var_cutoff, half_bw):
+    """" variance peak calling """
+    peak_starts = []
+    peak_ends = []
+    in_peak = False
+    for var, pos in zip(smoothed_vars, swindow_centers):
+        if var > var_cutoff:
+            if not in_peak:
+                # entering new peak
+                in_peak = True
+                if peak_ends and pos - half_bw <= max(peak_ends):
+                    # it's not really a new peak, the last peak wasn't
+                    # finished, there was just a small dip...
+                    peak_ends.pop()
+                else:
+                    peak_starts.append(pos - half_bw)
+        else:
+            if in_peak:
+                # exiting peak
+                in_peak = False
+                peak_ends.append(pos + half_bw)
+    if in_peak:
+        peak_ends.append(pos)
+    assert len(peak_starts) == len(peak_ends)
+    return peak_starts, peak_ends
 
 
 def scan(data_dir, output, bandwidth, stepsize, var_threshold, chromosome):
@@ -586,8 +617,15 @@ def scan(data_dir, output, bandwidth, stepsize, var_threshold, chromosome):
         secho(f"Searching only on chromosome {chromosome}", fg="green")
     else:
         # run on all chromosomes
-        chrom_paths = sorted(glob.glob(os.path.join(data_dir, "*.npz")))
+        chrom_paths = sorted(
+            glob.glob(os.path.join(data_dir, "*.npz")),
+            key=lambda x: os.path.getsize(x),
+            reverse=True,
+        )
 
+    var_threshold_value = (
+        None  # will be discovered on the largest chromosome based on X% cutoff
+    )
     for mat_path in chrom_paths:
         if chromosome:
             chrom = chromosome
@@ -608,7 +646,9 @@ def scan(data_dir, output, bandwidth, stepsize, var_threshold, chromosome):
         genomic_pos = []
         for pos in range(start, end, stepsize):
             genomic_pos.append(pos)
-            sm = _calc_residual_var(mat, mfracs, half_bw, smoothed_cpg_vals, pos)
+            sm = _calc_residual_var(
+                mat, mfracs, smoothed_cpg_vals, pos - half_bw, pos + half_bw
+            )
             smoothed_var.append(sm)
             if len(smoothed_var) % 100_000 == 0:
                 echo(
@@ -616,29 +656,26 @@ def scan(data_dir, output, bandwidth, stepsize, var_threshold, chromosome):
                     "scanned."
                 )
 
-        # variance peak calling:
-        peak_starts = []
-        peak_ends = []
-        in_peak = False
-        for var, pos in zip(smoothed_var, genomic_pos):
-            if var > var_threshold:
-                if not in_peak:
-                    # entering new peak
-                    in_peak = True
-                    peak_starts.append(pos - half_bw)
-            else:
-                if in_peak:
-                    in_peak = False
-                    peak_ends.append(pos + half_bw)
+        if var_threshold_value is None:
+            # this is the first=biggest chromosome, so let's find our variance threshold here
+            var_threshold_value = np.nanquantile(smoothed_var, 1 - var_threshold)
+            echo(f"Determined the variance threshold of {var_threshold_value}.")
 
-    for ps, pe in zip(peak_starts, peak_ends):
-        bed_entry = f"{chrom}\t{ps}\t{pe}\n"
-        output.write(bed_entry)
-    if len(peak_starts) > 0:
-        secho(f"Wrote {len(peak_starts)} variable bins to {output.name}.", fg="green")
-    else:
-        secho(
-            f"Found no variable regions so I'm not writing anything to {output.name}.",
-            fg="red",
+        peak_starts, peak_ends = _find_peaks(
+            smoothed_var, genomic_pos, var_threshold_value, half_bw
         )
+
+        for ps, pe in zip(peak_starts, peak_ends):
+            peak_var = _calc_residual_var(mat, mfracs, smoothed_cpg_vals, ps, pe)
+            bed_entry = f"{chrom}\t{ps}\t{pe}\t{peak_var}\n"
+            output.write(bed_entry)
+        if len(peak_starts) > 0:
+            secho(
+                f"Wrote {len(peak_starts)} variable bins to {output.name}.", fg="green"
+            )
+        else:
+            secho(
+                f"Found no variable regions on chromosome {chrom}.",
+                fg="red",
+            )
     return

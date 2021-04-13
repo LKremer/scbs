@@ -292,16 +292,17 @@ def matrix_cli(**kwargs):
 )
 @click.option(
     "--var-threshold",
-    default=0.065,
+    default=0.05,
     show_default=True,
-    help="The variance threshold.",
+    help="The variance threshold. The default of 0.05 means that the top 5% most variable "
+    "genomic bins will be merged and reported.",
 )
 @click.option(
     "--chromosome",
     show_default=True,
     type=str,
     nargs=1,
-    help="Specify on which chromosome to scan for variable regions.  " "[defaul: all]",
+    help="Specify on which chromosome to scan for variable regions.  [defaul: all]",
 )
 def scan_cli(**kwargs):
     timer = Timer(label="scan")
