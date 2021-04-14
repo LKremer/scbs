@@ -245,26 +245,20 @@ def _get_cell_names(cov_files):
     return names
 
 
-def _iterate_covfile(cov_file, header):
-    """
-    Iterate over a single cell input file, line by line,
-    optionally skipping the header and unzipping on the fly
-    """
+def _iterate_covfile(cov_file, c_col, p_col, m_col, u_col, coverage, sep, header):
     if cov_file.name.lower().endswith(".gz"):
         # handle gzip-compressed file
         lines = gzip.decompress(cov_file.read()).decode().strip().split("\n")
         if header:
             lines = lines[1:]
         for line in lines:
-            values = line.strip().split("\t")
-            yield values
+            yield _line_to_values(line.strip().split(sep), c_col, p_col, m_col, u_col, coverage)
     else:
         # handle uncompressed file
         if header:
             _ = cov_file.readline()
         for line in cov_file:
-            values = line.decode().strip().split("\t")
-            yield values
+            yield _line_to_values(line.decode().strip().split(sep), c_col, p_col, m_col, u_col, coverage)
 
 
 def _write_column_names(output_dir, cell_names, fname="column_header.txt"):
@@ -278,22 +272,58 @@ def _write_column_names(output_dir, cell_names, fname="column_header.txt"):
             col_head.write(cell_name + "\n")
     return out_path
 
+def _human_to_computer(file_format):
+    if type(file_format) == str:
+        if file_format.lower() in ('bismark', 'bismarck'):
+            c_col, p_col, m_col, u_col, coverage, sep, header = 0, 1, 4, 5, False, '\t', False
+        elif file_format.lower() == 'allc':
+            c_col, p_col, m_col, u_col, coverage, sep, header = 0, 1, 4, 5, True, '\t', True
+        else:
+            raise Exception("--format needs to have 6 entries or 'bismarck'/'allc' as input. Check --help for further information.")
+    elif type(file_format) == tuple:
+        if len(file_format)!=6:
+            raise Exception("--format needs to have 6 entries or 'bismarck'/'allc' as input. Check --help for further information.") 
+        else:
+            c_col = file_format[0]-1
+            p_col = file_format[1]-1
+            m_col = file_format[2]-1
+            u_col = int(tuple3[3][0:-1])-1
+            info = file_format[3][-1].lower()
+            if info =='c':
+                coverage = True
+            elif info =='m':
+                coverage = False
+            else: 
+                raise Exception("Format for column with coverage/methylation must be an integer and either c for coverage or m for methylation (eg 4c)") 
+            sep = str(file_format[4])
+            header = bool(file_format[5])
+    else: raise Exception("Format not correct. Check --help for further information.")
+    return c_col, p_col, m_col, u_col, coverage, sep, header
+
+def _line_to_values(line, c_col, p_col, m_col, u_col, coverage):
+    chrom = line[c_col]
+    pos = int(line[p_col])
+    n_meth = int(line[m_col])
+    if coverage:
+        n_unmeth = int(line[u_col])-n_meth
+    else:
+        n_unmeth = int(line[u_col])
+    return chrom, pos, n_meth, n_unmeth
 
 def _dump_coo_files(fpaths, input_format, n_cells, header, output_dir):
     os.makedirs(output_dir, exist_ok=True)
-    c_col, p_col, m_col, u_col = [f - 1 for f in input_format]
+    #c_col, p_col, m_col, u_col = [f - 1 for f in input_format]
+    c_col, p_col, m_col, u_col, coverage, sep, header = _human_to_computer(input_format)
     coo_files = {}
     chrom_sizes = {}
     for cell_n, cov_file in enumerate(fpaths):
         if cell_n % 50 == 0:
             echo("{0:.2f}% done...".format(100 * cell_n / n_cells))
         for line_vals in _iterate_covfile(cov_file, header):
-            n_meth, n_unmeth = int(line_vals[m_col]), int(line_vals[u_col])
+            chrom, genomic_pos, n_meth, n_unmeth = line_vals
             if n_meth != 0 and n_unmeth != 0:
                 continue  # currently we ignore all CpGs that are not "clear"!
             meth_value = 1 if n_meth > 0 else -1
-            genomic_pos = int(line_vals[p_col])
-            chrom = line_vals[c_col]
             if chrom not in coo_files:
                 coo_path = os.path.join(output_dir, f"{chrom}.coo")
                 coo_files[chrom] = open(coo_path, "w")
