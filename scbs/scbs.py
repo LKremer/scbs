@@ -273,31 +273,29 @@ def _write_column_names(output_dir, cell_names, fname="column_header.txt"):
     return out_path
 
 def _human_to_computer(file_format):
-    if type(file_format) == str:
-        if file_format.lower() in ('bismark', 'bismarck'):
+    if len(file_format) == 1:
+        if file_format[0].lower() == 'bismarck':
             c_col, p_col, m_col, u_col, coverage, sep, header = 0, 1, 4, 5, False, '\t', False
-        elif file_format.lower() == 'allc':
+        elif file_format[0].lower() == 'allc':
             c_col, p_col, m_col, u_col, coverage, sep, header = 0, 1, 4, 5, True, '\t', True
         else:
-            raise Exception("--format needs to have 6 entries or 'bismarck'/'allc' as input. Check --help for further information.")
-    elif type(file_format) == tuple:
-        if len(file_format)!=6:
-            raise Exception("--format needs to have 6 entries or 'bismarck'/'allc' as input. Check --help for further information.") 
-        else:
-            c_col = file_format[0]-1
-            p_col = file_format[1]-1
-            m_col = file_format[2]-1
-            u_col = int(tuple3[3][0:-1])-1
-            info = file_format[3][-1].lower()
-            if info =='c':
-                coverage = True
-            elif info =='m':
-                coverage = False
-            else: 
-                raise Exception("Format for column with coverage/methylation must be an integer and either c for coverage or m for methylation (eg 4c)") 
-            sep = str(file_format[4])
-            header = bool(file_format[5])
-    else: raise Exception("Format not correct. Check --help for further information.")
+            raise Exception("Format not correct. Check --help for further information.", fg="red")
+    elif len(file_format) == 6:
+        c_col = int(file_format[0])-1
+        p_col = int(file_format[1])-1
+        m_col = int(file_format[2])-1
+        u_col = int(tuple3[3][0:-1])-1
+        info = file_format[3][-1].lower()
+        if info =='c':
+            coverage = True
+        elif info =='m':
+            coverage = False
+        else: 
+            raise Exception("Format for column with coverage/methylation must be an integer and either c for coverage or m for methylation (eg 4c)", fg="red") 
+        sep = str(file_format[4])
+        header = bool(int(file_format[5]))
+    else: 
+        raise Exception("Format not correct. Check --help for further information.", fg="red")
     return c_col, p_col, m_col, u_col, coverage, sep, header
 
 def _line_to_values(line, c_col, p_col, m_col, u_col, coverage):
@@ -313,7 +311,7 @@ def _line_to_values(line, c_col, p_col, m_col, u_col, coverage):
 def _dump_coo_files(fpaths, input_format, n_cells, header, output_dir):
     os.makedirs(output_dir, exist_ok=True)
     #c_col, p_col, m_col, u_col = [f - 1 for f in input_format]
-    c_col, p_col, m_col, u_col, coverage, sep, header = _human_to_computer(input_format)
+    c_col, p_col, m_col, u_col, coverage, sep, header = _human_to_computer(input_format.split(':'))
     coo_files = {}
     chrom_sizes = {}
     for cell_n, cov_file in enumerate(fpaths):
