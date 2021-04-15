@@ -284,7 +284,7 @@ def _human_to_computer(file_format):
         c_col = int(file_format[0])-1
         p_col = int(file_format[1])-1
         m_col = int(file_format[2])-1
-        u_col = int(tuple3[3][0:-1])-1
+        u_col = int(file_format[3][0:-1])-1
         info = file_format[3][-1].lower()
         if info =='c':
             coverage = True
