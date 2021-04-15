@@ -317,7 +317,7 @@ def _dump_coo_files(fpaths, input_format, n_cells, header, output_dir):
     for cell_n, cov_file in enumerate(fpaths):
         if cell_n % 50 == 0:
             echo("{0:.2f}% done...".format(100 * cell_n / n_cells))
-        for line_vals in _iterate_covfile(cov_file, header):
+        for line_vals in _iterate_covfile(cov_file, c_col, p_col, m_col, u_col, coverage, sep, header):
             chrom, genomic_pos, n_meth, n_unmeth = line_vals
             if n_meth != 0 and n_unmeth != 0:
                 continue  # currently we ignore all CpGs that are not "clear"!
