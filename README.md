@@ -37,9 +37,9 @@ scbs prepare --help
 If you encounter a "too many open files" error during `scbs prepare` (`OSError: [Errno 24] Too many open files`), you need to increase the maximum number of files that can be opened. In Unix systems, try `ulimit -n 9999`.
 
 ## TODO (in order of importance):
-- finish implementing "scbs scan" (overlapping variable windows should be merged automatically, the variance threshold should be estimated from the data itself e.g. by taking the 5% most variable parts of the genome instead of regions above a hard variance threshold)
-- allow other input formats (currently only Bismark is supported)
-- make things fast with numba (especially "scbs scan")
-- test on simulated data and other datasets
-- write basic tests & docs
-- add further functionality (e.g. SVD, plotting, clustering, testing for differential methylation between clusters...)
+- [x] finish implementing "scbs scan" (overlapping variable windows are now merged automatically, the variance threshold is now estimated from the data itself by taking the top x% (default 5%) most variable genomic windows)
+- [x] allow other input formats (now we support bismark, allc=methylpy and custom user-specified formats)
+- [ ] make things fast with numba (especially "scbs scan")
+- [ ] test on simulated data and other datasets
+- [ ] write basic tests & docs
+- [ ] add further functionality (e.g. SVD, plotting, clustering, testing for differential methylation between clusters...)
