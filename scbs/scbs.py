@@ -293,6 +293,8 @@ def _human_to_computer(file_format):
         else: 
             raise Exception("Format for column with coverage/methylation must be an integer and either c for coverage or m for methylation (eg 4c)", fg="red") 
         sep = str(file_format[4])
+        if sep == '\\t':
+            sep = '\t'
         header = bool(int(file_format[5]))
     else: 
         raise Exception("Format not correct. Check --help for further information.", fg="red")
