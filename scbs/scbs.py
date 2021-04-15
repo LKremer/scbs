@@ -274,7 +274,7 @@ def _write_column_names(output_dir, cell_names, fname="column_header.txt"):
 
 def _human_to_computer(file_format):
     if len(file_format) == 1:
-        if file_format[0].lower() == 'bismarck':
+        if file_format[0].lower() in ('bismarck', 'bismark'):
             c_col, p_col, m_col, u_col, coverage, sep, header = 0, 1, 4, 5, False, '\t', False
         elif file_format[0].lower() == 'allc':
             c_col, p_col, m_col, u_col, coverage, sep, header = 0, 1, 4, 5, True, '\t', True

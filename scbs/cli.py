@@ -82,16 +82,21 @@ def cli():
 )
 @click.option(
     "--input-format",
-    default=(1, 2, 5, 6),
-    nargs=4,
-    metavar="<INT INT INT INT>",
+    default='bismark,
     help="""
-    Specify the format of the input files using four numbers.
-    Numbers denote in which column the chromosome name, genomic position,
-    methylated counts and unmethylated counts are stored; e.g. the
-    default '--format 1 2 5 6' (Bismark's '.cov' format) denotes that the
-    first column (1-indexed) contains the chromosome name, the 5th column
-    contains the methylated counts etc.""",
+    Specify the format of the input files. When using Bismark's '.cov' format,
+    type --format bismark. When using using methylpy's 'allc' format, type --format allc.
+    If none of the above apply, you can specify a costum format:
+    The positions should be separate with ':' and denote:
+    1. No. (1-indexed) of column with chromosome name
+    2. No. (1-indexed) of column with genomic position
+    3. No. (1-indexed) of column with methylated counts
+    4. No. (1-indexed)of column with unmethylated counts(m) / coverage(c). Depending on which of the two is used, specify with 'm' or 'c'.
+    5. Type of separation, eg '\t' for tab-separation or ',' for comma-separation
+    6. 0 if the file has a header, 1 if the file does not have a header
+
+    Example: --format 1:2:3:4m:\t:1
+    If nothing is specified, the default format is bismark (--format 1:2:5:6c:\t:0); --format 'allc' correspods to --format 1:2:5:6m:\t:1""",
 )
 @click.option(
     "--header",
