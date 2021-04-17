@@ -306,13 +306,6 @@ def matrix_cli(**kwargs):
     help="The variance threshold. The default of 0.05 means that the top 5% most variable "
     "genomic bins will be merged and reported.",
 )
-@click.option(
-    "--chromosome",
-    show_default=True,
-    type=str,
-    nargs=1,
-    help="Specify on which chromosome to scan for variable regions.  [defaul: all]",
-)
 def scan_cli(**kwargs):
     timer = Timer(label="scan")
     _print_kwargs(kwargs)

@@ -590,7 +590,7 @@ def matrix(
 
 def _calc_residual_var(mat, mfracs, smoothed_vals, start, end):
     """
-    Calculate the variance of shrunken residuals for a given windows
+    Calculate the variance of shrunken residuals for a given window
     """
     window = mfracs[start:end]
     nz = ~np.isnan(window)
@@ -641,26 +641,15 @@ def _find_peaks(smoothed_vars, swindow_centers, var_cutoff, half_bw):
 
 def scan(data_dir, output, bandwidth, stepsize, var_threshold, chromosome):
     half_bw = bandwidth // 2
-    if chromosome:
-        # run on a single chromosome
-        chrom_paths = [os.path.join(data_dir, f"{chromosome}.npz")]
-        secho(f"Searching only on chromosome {chromosome}", fg="green")
-    else:
-        # run on all chromosomes
-        chrom_paths = sorted(
-            glob.glob(os.path.join(data_dir, "*.npz")),
-            key=lambda x: os.path.getsize(x),
-            reverse=True,
-        )
-
-    var_threshold_value = (
-        None  # will be discovered on the largest chromosome based on X% cutoff
+    # sort chroms by filesize. We want to start with biggest chrom to estimate variance threshold
+    chrom_paths = sorted(
+        glob.glob(os.path.join(data_dir, "*.npz")),
+        key=lambda x: os.path.getsize(x),
+        reverse=True,
     )
+    var_threshold_value = None  # will be discovered on the largest chromosome based on X% cutoff
     for mat_path in chrom_paths:
-        if chromosome:
-            chrom = chromosome
-        else:
-            chrom = os.path.basename(os.path.splitext(mat_path)[0])
+        chrom = os.path.basename(os.path.splitext(mat_path)[0])
         mat = _load_chrom_mat(data_dir, chrom)
         smoothed_cpg_vals = _load_smoothed_chrom(data_dir, chrom)
         n_obs = mat.getnnz(axis=1)
