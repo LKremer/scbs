@@ -4,11 +4,11 @@ import gzip
 import glob
 import pandas as pd
 import numpy as np
+import numba
 import scipy.sparse as sp_sparse
 from statsmodels.stats.proportion import proportion_confint
 from click import echo, secho
-
-# from numba import prange, jit, njit, vectorize
+from numba import njit, prange
 
 
 # ignore division by 0 and division by NaN error
@@ -252,13 +252,17 @@ def _iterate_covfile(cov_file, c_col, p_col, m_col, u_col, coverage, sep, header
         if header:
             lines = lines[1:]
         for line in lines:
-            yield _line_to_values(line.strip().split(sep), c_col, p_col, m_col, u_col, coverage)
+            yield _line_to_values(
+                line.strip().split(sep), c_col, p_col, m_col, u_col, coverage
+            )
     else:
         # handle uncompressed file
         if header:
             _ = cov_file.readline()
         for line in cov_file:
-            yield _line_to_values(line.decode().strip().split(sep), c_col, p_col, m_col, u_col, coverage)
+            yield _line_to_values(
+                line.decode().strip().split(sep), c_col, p_col, m_col, u_col, coverage
+            )
 
 
 def _write_column_names(output_dir, cell_names, fname="column_header.txt"):
@@ -272,54 +276,84 @@ def _write_column_names(output_dir, cell_names, fname="column_header.txt"):
             col_head.write(cell_name + "\n")
     return out_path
 
+
 def _human_to_computer(file_format):
     if len(file_format) == 1:
-        if file_format[0].lower() in ('bismarck', 'bismark'):
-            c_col, p_col, m_col, u_col, coverage, sep, header = 0, 1, 4, 5, False, '\t', False
-        elif file_format[0].lower() == 'allc':
-            c_col, p_col, m_col, u_col, coverage, sep, header = 0, 1, 4, 5, True, '\t', True
+        if file_format[0].lower() in ("bismarck", "bismark"):
+            c_col, p_col, m_col, u_col, coverage, sep, header = (
+                0,
+                1,
+                4,
+                5,
+                False,
+                "\t",
+                False,
+            )
+        elif file_format[0].lower() == "allc":
+            c_col, p_col, m_col, u_col, coverage, sep, header = (
+                0,
+                1,
+                4,
+                5,
+                True,
+                "\t",
+                True,
+            )
         else:
-            raise Exception("Format not correct. Check --help for further information.", fg="red")
+            raise Exception(
+                "Format not correct. Check --help for further information.", fg="red"
+            )
     elif len(file_format) == 6:
-        c_col = int(file_format[0])-1
-        p_col = int(file_format[1])-1
-        m_col = int(file_format[2])-1
-        u_col = int(file_format[3][0:-1])-1
+        c_col = int(file_format[0]) - 1
+        p_col = int(file_format[1]) - 1
+        m_col = int(file_format[2]) - 1
+        u_col = int(file_format[3][0:-1]) - 1
         info = file_format[3][-1].lower()
-        if info =='c':
+        if info == "c":
             coverage = True
-        elif info =='m':
+        elif info == "m":
             coverage = False
-        else: 
-            raise Exception("Format for column with coverage/methylation must be an integer and either c for coverage or m for methylation (eg 4c)", fg="red") 
+        else:
+            raise Exception(
+                "Format for column with coverage/methylation must be an integer and either c for coverage or m for methylation (eg 4c)",
+                fg="red",
+            )
         sep = str(file_format[4])
-        if sep == '\\t':
-            sep = '\t'
+        if sep == "\\t":
+            sep = "\t"
         header = bool(int(file_format[5]))
-    else: 
-        raise Exception("Format not correct. Check --help for further information.", fg="red")
+    else:
+        raise Exception(
+            "Format not correct. Check --help for further information.", fg="red"
+        )
     return c_col, p_col, m_col, u_col, coverage, sep, header
+
 
 def _line_to_values(line, c_col, p_col, m_col, u_col, coverage):
     chrom = line[c_col]
     pos = int(line[p_col])
     n_meth = int(line[m_col])
     if coverage:
-        n_unmeth = int(line[u_col])-n_meth
+        n_unmeth = int(line[u_col]) - n_meth
     else:
         n_unmeth = int(line[u_col])
     return chrom, pos, n_meth, n_unmeth
 
+
 def _dump_coo_files(fpaths, input_format, n_cells, header, output_dir):
     os.makedirs(output_dir, exist_ok=True)
-    #c_col, p_col, m_col, u_col = [f - 1 for f in input_format]
-    c_col, p_col, m_col, u_col, coverage, sep, header = _human_to_computer(input_format.split(':'))
+    # c_col, p_col, m_col, u_col = [f - 1 for f in input_format]
+    c_col, p_col, m_col, u_col, coverage, sep, header = _human_to_computer(
+        input_format.split(":")
+    )
     coo_files = {}
     chrom_sizes = {}
     for cell_n, cov_file in enumerate(fpaths):
         if cell_n % 50 == 0:
             echo("{0:.2f}% done...".format(100 * cell_n / n_cells))
-        for line_vals in _iterate_covfile(cov_file, c_col, p_col, m_col, u_col, coverage, sep, header):
+        for line_vals in _iterate_covfile(
+            cov_file, c_col, p_col, m_col, u_col, coverage, sep, header
+        ):
             chrom, genomic_pos, n_meth, n_unmeth = line_vals
             if n_meth != 0 and n_unmeth != 0:
                 continue  # currently we ignore all CpGs that are not "clear"!
@@ -476,6 +510,7 @@ def _output_file_handle(raw_path):
     return handle
 
 
+# will be unnecessary soon
 def _load_smoothed_chrom(data_dir, chrom):
     smoothed_path = os.path.join(data_dir, "smoothed", f"{chrom}.csv")
     if not os.path.isfile(smoothed_path):
@@ -490,6 +525,25 @@ def _load_smoothed_chrom(data_dir, chrom):
             pos, smooth_val = line.strip().split(",")
             out_dict[int(pos)] = float(smooth_val)
     return out_dict
+
+
+def _load_smoothed_chrom_numba(data_dir, chrom):
+    smoothed_path = os.path.join(data_dir, "smoothed", f"{chrom}.csv")
+    if not os.path.isfile(smoothed_path):
+        raise Exception(
+            "Could not find smoothed methylation data for "
+            f"chromosome {chrom} at {smoothed_path} . "
+            "Please run 'scbs smooth' first."
+        )
+    typed_dict = numba.typed.Dict.empty(
+        key_type=numba.types.int64,
+        value_type=numba.types.float64,
+    )
+    with open(smoothed_path, "r") as smooth_file:
+        for line in smooth_file:
+            pos, smooth_val = line.strip().split(",")
+            typed_dict[int(pos)] = float(smooth_val)
+    return typed_dict
 
 
 def matrix(
@@ -639,7 +693,82 @@ def _find_peaks(smoothed_vars, swindow_centers, var_cutoff, half_bw):
     return peak_starts, peak_ends
 
 
-def scan(data_dir, output, bandwidth, stepsize, var_threshold, chromosome):
+@njit(parallel=True)
+def _move_windows(
+    start,
+    end,
+    stepsize,
+    half_bw,
+    data_chrom,
+    indices_chrom,
+    indptr_chrom,
+    smoothed_vals,
+    n_cells,
+):
+    # shift windows along the chromosome and calculate the variance for each window.
+    windows = np.arange(start, end, stepsize)
+    smoothed_var = np.empty(windows.shape, dtype=np.float64)
+    genomic_pos = np.empty(windows.shape, dtype=np.int64)
+    for i in prange(windows.shape[0]):
+        pos = windows[i]
+        mean_shrunk_resid = _calc_mean_shrunken_residuals_numba(
+            data_chrom,
+            indices_chrom,
+            indptr_chrom,
+            pos - half_bw,
+            pos + half_bw,
+            smoothed_vals,
+            n_cells,
+        )
+        smoothed_var[i] = np.nanvar(mean_shrunk_resid)
+    return windows, smoothed_var
+
+
+@njit(nogil=True)
+def _calc_mean_shrunken_residuals_numba(
+    data_chrom, indices_chrom, indptr_chrom, start, end, smoothed_vals, n_cells
+):
+    shrunken_resid = np.full(n_cells, np.nan)
+    # slice data
+    data = data_chrom[indptr_chrom[start] : indptr_chrom[end + 1]]
+    if data.size == 0:
+        # return NaN for regions without coverage or regions without CpGs
+        return shrunken_resid
+    # slice indices
+    indices = indices_chrom[indptr_chrom[start] : indptr_chrom[end + 1]]
+    # slice indptr
+    indptr = indptr_chrom[start : end + 2] - indptr_chrom[start]
+    indptr_diff = np.diff(indptr)
+
+    n_obs = np.zeros(n_cells, dtype=np.int64)
+    n_obs_start = np.bincount(indices)
+    n_obs[0 : n_obs_start.shape[0]] = n_obs_start
+
+    meth_sums = np.zeros(n_cells, dtype=np.int64)
+    smooth_sums = np.zeros(n_cells, dtype=np.float64)
+    cpg_idx = 0
+    nobs_cpg = indptr_diff[cpg_idx]
+    # nobs_cpg: how many of the next values correspond to the same CpG
+    # e.g. a value of 3 means that the next 3 values are of the same CpG
+    for i in range(data.shape[0]):
+        while nobs_cpg == 0:
+            cpg_idx += 1
+            nobs_cpg = indptr_diff[cpg_idx]
+        nobs_cpg -= 1
+        cell_idx = indices[i]
+        smooth_sums[cell_idx] += smoothed_vals[start + cpg_idx]
+        meth_value = data[i]
+        if meth_value == -1:
+            continue  # skip 0 meth values when summing
+        meth_sums[cell_idx] += meth_value
+
+    for i in range(n_cells):
+        if n_obs[i] > 0:
+            shrunken_resid[i] = (meth_sums[i] - smooth_sums[i]) / (n_obs[i] + 1)
+    return shrunken_resid
+
+
+def scan(data_dir, output, bandwidth, stepsize, var_threshold):
     half_bw = bandwidth // 2
     # sort chroms by filesize. We want to start with biggest chrom to estimate variance threshold
     chrom_paths = sorted(
@@ -647,41 +776,41 @@ def scan(data_dir, output, bandwidth, stepsize, var_threshold, chromosome):
         key=lambda x: os.path.getsize(x),
         reverse=True,
     )
-    var_threshold_value = None  # will be discovered on the largest chromosome based on X% cutoff
+    var_threshold_value = (
+        None  # will be discovered on the largest chromosome based on X% cutoff
+    )
     for mat_path in chrom_paths:
         chrom = os.path.basename(os.path.splitext(mat_path)[0])
         mat = _load_chrom_mat(data_dir, chrom)
-        smoothed_cpg_vals = _load_smoothed_chrom(data_dir, chrom)
+        smoothed_cpg_vals = _load_smoothed_chrom_numba(data_dir, chrom)
         n_obs = mat.getnnz(axis=1)
         n_meth = np.ravel(np.sum(mat > 0, axis=1))
         mfracs = np.divide(n_meth, n_obs)
+        n_cells = mat.shape[1]
         cpg_pos_chrom = np.nonzero(mat.getnnz(axis=1))[0]
 
-        # shift windows along the chromosome and calculate the variance for each window.
-        # this is very slow but could be very fast with numba! easy to parallelize
+        # slide windows along the chromosome and calculate the mean shrunken variance of residuals for each window.
         start = cpg_pos_chrom[0] + half_bw + 1
         end = cpg_pos_chrom[-1] - half_bw - 1
-        smoothed_var = []
-        genomic_pos = []
-        for pos in range(start, end, stepsize):
-            genomic_pos.append(pos)
-            sm = _calc_residual_var(
-                mat, mfracs, smoothed_cpg_vals, pos - half_bw, pos + half_bw
-            )
-            smoothed_var.append(sm)
-            if len(smoothed_var) % 100_000 == 0:
-                echo(
-                    f"chromosome {chrom} is {100 * (pos-start) / (end-start):.3}% "
-                    "scanned."
-                )
+        genomic_positions, window_variances = _move_windows(
+            start,
+            end,
+            stepsize,
+            half_bw,
+            mat.data,
+            mat.indices,
+            mat.indptr,
+            smoothed_cpg_vals,
+            n_cells,
+        )
 
         if var_threshold_value is None:
             # this is the first=biggest chromosome, so let's find our variance threshold here
-            var_threshold_value = np.nanquantile(smoothed_var, 1 - var_threshold)
+            var_threshold_value = np.nanquantile(window_variances, 1 - var_threshold)
             echo(f"Determined the variance threshold of {var_threshold_value}.")
 
         peak_starts, peak_ends = _find_peaks(
-            smoothed_var, genomic_pos, var_threshold_value, half_bw
+            window_variances, genomic_positions, var_threshold_value, half_bw
         )
 
         for ps, pe in zip(peak_starts, peak_ends):

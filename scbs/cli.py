@@ -82,7 +82,7 @@ def cli():
 )
 @click.option(
     "--input-format",
-    default='bismark',
+    default="bismark",
     help="""
     Specify the format of the input files. When using Bismark's '.cov' format,
     type --format bismark. When using using methylpy's 'allc' format, type --input-format allc.
