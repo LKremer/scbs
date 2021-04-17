@@ -708,7 +708,6 @@ def _move_windows(
     # shift windows along the chromosome and calculate the variance for each window.
     windows = np.arange(start, end, stepsize)
     smoothed_var = np.empty(windows.shape, dtype=np.float64)
-    genomic_pos = np.empty(windows.shape, dtype=np.int64)
     for i in prange(windows.shape[0]):
         pos = windows[i]
         mean_shrunk_resid = _calc_mean_shrunken_residuals_numba(
@@ -776,9 +775,8 @@ def scan(data_dir, output, bandwidth, stepsize, var_threshold):
         key=lambda x: os.path.getsize(x),
         reverse=True,
     )
-    var_threshold_value = (
-        None  # will be discovered on the largest chromosome based on X% cutoff
-    )
+    # will be discovered on the largest chromosome based on X% cutoff
+    var_threshold_value = None
     for mat_path in chrom_paths:
         chrom = os.path.basename(os.path.splitext(mat_path)[0])
         mat = _load_chrom_mat(data_dir, chrom)
@@ -814,7 +812,18 @@ def scan(data_dir, output, bandwidth, stepsize, var_threshold):
         )
 
         for ps, pe in zip(peak_starts, peak_ends):
-            peak_var = _calc_residual_var(mat, mfracs, smoothed_cpg_vals, ps, pe)
+            # peak_var = _calc_residual_var(mat, mfracs, smoothed_cpg_vals, ps, pe)
+            peak_var = np.nanvar(
+                _calc_mean_shrunken_residuals_numba(
+                    mat.data,
+                    mat.indices,
+                    mat.indptr,
+                    ps,
+                    pe,
+                    smoothed_cpg_vals,
+                    n_cells,
+                )
+            )
             bed_entry = f"{chrom}\t{ps}\t{pe}\t{peak_var}\n"
             output.write(bed_entry)
         if len(peak_starts) > 0:
