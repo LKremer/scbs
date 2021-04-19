@@ -745,7 +745,10 @@ def _calc_mfracs(data_chrom, indices_chrom, indptr_chrom, start, end, n_cells):
     return n_meth, n_total, np.divide(n_meth, n_total)
 
 
-def scan(data_dir, output, bandwidth, stepsize, var_threshold):
+def scan(data_dir, output, bandwidth, stepsize, var_threshold, threads=-1):
+    if threads != -1:
+        numba.set_num_threads(threads)
+    n_threads = numba.get_num_threads()
     half_bw = bandwidth // 2
     # sort chroms by filesize. We start with largest chrom to find the var threshold
     chrom_paths = sorted(
@@ -765,6 +768,10 @@ def scan(data_dir, output, bandwidth, stepsize, var_threshold):
         n_cells = mat.shape[1]
         cpg_pos_chrom = np.nonzero(mat.getnnz(axis=1))[0]
 
+        if n_threads > 1:
+            echo(f"Scanning chromosome {chrom} using {n_threads} parallel threads ...")
+        else:
+            echo(f"Scanning chromosome {chrom} ...")
         # slide windows along the chromosome and calculate the mean
         # shrunken variance of residuals for each window.
         start = cpg_pos_chrom[0] + half_bw + 1

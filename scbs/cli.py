@@ -1,4 +1,5 @@
 import click
+import numba
 from click import echo, style
 from datetime import datetime, timedelta
 from scbs.scbs import _get_filepath, profile, prepare, smooth, matrix, scan
@@ -30,6 +31,19 @@ def _print_kwargs(kwargs):
             value_fmt = style(str(_get_filepath(value)), fg="blue")
             echo(f"{arg: >15}: {value_fmt}")
     echo()
+
+
+def _set_n_threads(ctx, param, value):
+    """
+    Set the number of CPU threads for numba.
+    Arguments come straight from click option.
+    """
+    if value == -1:
+        return numba.config.NUMBA_NUM_THREADS
+    elif value == 0:
+        return 1
+    else:
+        return value
 
 
 # command group
@@ -305,6 +319,12 @@ def matrix_cli(**kwargs):
     show_default=True,
     help="The variance threshold. The default of 0.05 means that the top 5% most variable "
     "genomic bins will be merged and reported.",
+)
+@click.option(
+    "--threads",
+    default=-1,
+    help="How many CPU threads to use in parallel.  [default: all available]",
+    callback=_set_n_threads,
 )
 def scan_cli(**kwargs):
     timer = Timer(label="scan")
