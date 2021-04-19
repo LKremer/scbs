@@ -1,4 +1,3 @@
-from __future__ import print_function, division
 import os
 import gzip
 import glob
@@ -315,7 +314,8 @@ def _human_to_computer(file_format):
             coverage = False
         else:
             raise Exception(
-                "Format for column with coverage/methylation must be an integer and either c for coverage or m for methylation (eg 4c)",
+                "Format for column with coverage/methylation must be an integer and "
+                "either c for coverage or m for methylation (eg 4c)",
                 fg="red",
             )
         sep = str(file_format[4])
@@ -423,7 +423,7 @@ def prepare(input_files, data_dir, input_format, header):
             shape=(chrom_size + 1, n_cells),
             dtype=np.int8,
         )
-        echo(f"Converting from COO to CSR...")
+        echo("Converting from COO to CSR...")
         mat = mat.tocsr()  # convert from COO to CSR format
 
         n_obs_cell += mat.getnnz(axis=0)
@@ -510,24 +510,7 @@ def _output_file_handle(raw_path):
     return handle
 
 
-# will be unnecessary soon
 def _load_smoothed_chrom(data_dir, chrom):
-    smoothed_path = os.path.join(data_dir, "smoothed", f"{chrom}.csv")
-    if not os.path.isfile(smoothed_path):
-        raise Exception(
-            "Could not find smoothed methylation data for "
-            f"chromosome {chrom} at {smoothed_path} . "
-            "Please run 'scbs smooth' first."
-        )
-    out_dict = {}
-    with open(smoothed_path, "r") as smooth_file:
-        for line in smooth_file:
-            pos, smooth_val = line.strip().split(",")
-            out_dict[int(pos)] = float(smooth_val)
-    return out_dict
-
-
-def _load_smoothed_chrom_numba(data_dir, chrom):
     smoothed_path = os.path.join(data_dir, "smoothed", f"{chrom}.csv")
     if not os.path.isfile(smoothed_path):
         raise Exception(
@@ -559,7 +542,7 @@ def matrix(
         "cell_name",
         "n_meth",
         "n_obs," "meth_frac",
-        "residual",
+        # "residual",
         "shrunken_residual",
     ]
     cell_names = _parse_cell_names(data_dir)
@@ -587,34 +570,23 @@ def matrix(
                 unknown_chroms.add(chrom)
             else:
                 echo(f"extracting methylation for regions on chromosome {chrom} ...")
-                smoothed_cpg_vals = _load_smoothed_chrom(data_dir, chrom)
+                smoothed_vals = _load_smoothed_chrom(data_dir, chrom)
+                n_cells = mat.shape[0]
             observed_chroms.add(chrom)
             prev_chrom = chrom
-
-        region = mat[start:end, :]
+        # calculate methylation fraction, shrunken residuals etc. for the region:
         n_regions += 1
-        if region.nnz == 0:
+        n_meth, n_total, mfracs = _calc_mfracs(
+            mat.data, mat.indices, mat.indptr, start, end, n_cells
+        )
+        nz_cells = np.nonzero(n_total > 0)[0]
+        if nz_cells.size == 0:
             # skip regions that contain no CpG
             n_empty_regions += 1
             continue
-
-        n_obs = region.getnnz(axis=0)
-        n_meth = np.ravel(np.sum(region > 0, axis=0))
-        nz_cells = np.nonzero(n_obs > 0)[0]
-        # smoothing and centering:
-        cpg_positions = np.nonzero(region.getnnz(axis=1))[0]
-        region = region[cpg_positions, :].todense()  # remove all non-CpG bases
-        region = np.where(region == 0, np.nan, region)
-        region = np.where(region == -1, 0, region)
-        # load smoothed values
-        smoothed = np.array([smoothed_cpg_vals[start + c] for c in cpg_positions])
-        # centering, using the smoothed means
-        mvals_resid = np.subtract(region, np.reshape(smoothed, (-1, 1)))
-        # calculate methylation % per cell (3 different ways, to compare performance)
-        mfracs = np.nanmean(region, axis=0)
-        resid = np.nanmean(mvals_resid, axis=0)
-        resid_shrunk = np.nansum(mvals_resid, axis=0) / (n_obs + 1)
-
+        resid_shrunk = _calc_mean_shrunken_residuals(
+            mat.data, mat.indices, mat.indptr, start, end, smoothed_vals, n_cells
+        )
         # write "count" table
         for c in nz_cells:
             out_vals = [
@@ -623,17 +595,19 @@ def matrix(
                 end,
                 cell_names[c],
                 n_meth[c],
-                n_obs[c],
+                n_total[c],
                 mfracs[c],
-                resid[c],
+                # resid[c],
                 resid_shrunk[c],
             ]
             if keep_other_columns and other_columns:
                 out_vals += other_columns
             output.write(",".join(str(v) for v in out_vals) + "\n")
 
+    if n_regions == 0:
+        raise Exception("bed file contains no regions.")
     echo(f"Profiled {n_regions} regions.\n")
-    if n_empty_regions / n_regions > 0.5:
+    if (n_empty_regions / n_regions) > 0.5:
         secho("Warning - most regions have no coverage in any cell:", fg="red")
     echo(
         f"{n_empty_regions} regions ({n_empty_regions/n_regions:.2%}) "
@@ -642,30 +616,7 @@ def matrix(
     return
 
 
-def _calc_residual_var(mat, mfracs, smoothed_vals, start, end):
-    """
-    Calculate the variance of shrunken residuals for a given window
-    """
-    window = mfracs[start:end]
-    nz = ~np.isnan(window)
-    if not np.sum(nz):
-        return np.nan
-
-    region = mat[start:end, :]
-    n_obs = region.getnnz(axis=0)
-    region = region[nz, :].todense()  # remove all non-CpG bases
-    region = np.where(region == 0, np.nan, region)
-    region = np.where(region == -1, 0, region)
-
-    cpg_pos = np.arange(start, end)
-    smooth_avg = np.array([smoothed_vals[p] for p in cpg_pos[nz]])
-
-    resid = np.subtract(region, np.reshape(smooth_avg, (-1, 1)))
-    assert np.nansum(resid, axis=0).shape == n_obs.shape
-    resid_shrunk = np.nansum(resid, axis=0) / (n_obs + 1)
-    return np.nanvar(resid_shrunk)
-
-
+@njit
 def _find_peaks(smoothed_vars, swindow_centers, var_cutoff, half_bw):
     """" variance peak calling """
     peak_starts = []
@@ -710,7 +661,7 @@ def _move_windows(
     smoothed_var = np.empty(windows.shape, dtype=np.float64)
     for i in prange(windows.shape[0]):
         pos = windows[i]
-        mean_shrunk_resid = _calc_mean_shrunken_residuals_numba(
+        mean_shrunk_resid = _calc_mean_shrunken_residuals(
             data_chrom,
             indices_chrom,
             indptr_chrom,
@@ -724,18 +675,25 @@ def _move_windows(
 
 
 @njit(nogil=True)
-def _calc_mean_shrunken_residuals_numba(
-    data_chrom, indices_chrom, indptr_chrom, start, end, smoothed_vals, n_cells
+def _calc_mean_shrunken_residuals(
+    data_chrom,
+    indices_chrom,
+    indptr_chrom,
+    start,
+    end,
+    smoothed_vals,
+    n_cells,
+    shrinkage_factor=1,
 ):
     shrunken_resid = np.full(n_cells, np.nan)
-    # slice data
+    # slice the methylation values so that we only keep the values in the window
     data = data_chrom[indptr_chrom[start] : indptr_chrom[end + 1]]
     if data.size == 0:
         # return NaN for regions without coverage or regions without CpGs
         return shrunken_resid
     # slice indices
     indices = indices_chrom[indptr_chrom[start] : indptr_chrom[end + 1]]
-    # slice indptr
+    # slice index pointer
     indptr = indptr_chrom[start : end + 2] - indptr_chrom[start]
     indptr_diff = np.diff(indptr)
 
@@ -763,13 +721,33 @@ def _calc_mean_shrunken_residuals_numba(
 
     for i in range(n_cells):
         if n_obs[i] > 0:
-            shrunken_resid[i] = (meth_sums[i] - smooth_sums[i]) / (n_obs[i] + 1)
+            shrunken_resid[i] = (meth_sums[i] - smooth_sums[i]) / (
+                n_obs[i] + shrinkage_factor
+            )
     return shrunken_resid
+
+
+@njit
+def _calc_mfracs(data_chrom, indices_chrom, indptr_chrom, start, end, n_cells):
+    # slice the methylation values so that we only keep the values in the window
+    data = data_chrom[indptr_chrom[start] : indptr_chrom[end + 1]]
+    # slice indices
+    indices = indices_chrom[indptr_chrom[start] : indptr_chrom[end + 1]]
+    n_meth = np.zeros(n_cells, dtype=np.int64)
+    n_total = np.zeros(n_cells, dtype=np.int64)
+    for i in range(data.shape[0]):
+        cell_i = indices[i]
+        meth_value = data[i]
+        n_total[cell_i] += 1
+        if meth_value == -1:
+            continue
+        n_meth[cell_i] += meth_value
+    return n_meth, n_total, np.divide(n_meth, n_total)
 
 
 def scan(data_dir, output, bandwidth, stepsize, var_threshold):
     half_bw = bandwidth // 2
-    # sort chroms by filesize. We want to start with biggest chrom to estimate variance threshold
+    # sort chroms by filesize. We start with largest chrom to find the var threshold
     chrom_paths = sorted(
         glob.glob(os.path.join(data_dir, "*.npz")),
         key=lambda x: os.path.getsize(x),
@@ -780,14 +758,15 @@ def scan(data_dir, output, bandwidth, stepsize, var_threshold):
     for mat_path in chrom_paths:
         chrom = os.path.basename(os.path.splitext(mat_path)[0])
         mat = _load_chrom_mat(data_dir, chrom)
-        smoothed_cpg_vals = _load_smoothed_chrom_numba(data_dir, chrom)
-        n_obs = mat.getnnz(axis=1)
-        n_meth = np.ravel(np.sum(mat > 0, axis=1))
-        mfracs = np.divide(n_meth, n_obs)
+        smoothed_cpg_vals = _load_smoothed_chrom(data_dir, chrom)
+        # n_obs = mat.getnnz(axis=1)
+        # n_meth = np.ravel(np.sum(mat > 0, axis=1))
+        # mfracs = np.divide(n_meth, n_obs)
         n_cells = mat.shape[1]
         cpg_pos_chrom = np.nonzero(mat.getnnz(axis=1))[0]
 
-        # slide windows along the chromosome and calculate the mean shrunken variance of residuals for each window.
+        # slide windows along the chromosome and calculate the mean
+        # shrunken variance of residuals for each window.
         start = cpg_pos_chrom[0] + half_bw + 1
         end = cpg_pos_chrom[-1] - half_bw - 1
         genomic_positions, window_variances = _move_windows(
@@ -803,7 +782,7 @@ def scan(data_dir, output, bandwidth, stepsize, var_threshold):
         )
 
         if var_threshold_value is None:
-            # this is the first=biggest chromosome, so let's find our variance threshold here
+            # this is the first=biggest chrom, so let's find our variance threshold here
             var_threshold_value = np.nanquantile(window_variances, 1 - var_threshold)
             echo(f"Determined the variance threshold of {var_threshold_value}.")
 
@@ -812,9 +791,8 @@ def scan(data_dir, output, bandwidth, stepsize, var_threshold):
         )
 
         for ps, pe in zip(peak_starts, peak_ends):
-            # peak_var = _calc_residual_var(mat, mfracs, smoothed_cpg_vals, ps, pe)
             peak_var = np.nanvar(
-                _calc_mean_shrunken_residuals_numba(
+                _calc_mean_shrunken_residuals(
                     mat.data,
                     mat.indices,
                     mat.indptr,
@@ -828,7 +806,8 @@ def scan(data_dir, output, bandwidth, stepsize, var_threshold):
             output.write(bed_entry)
         if len(peak_starts) > 0:
             secho(
-                f"Wrote {len(peak_starts)} variable bins to {output.name}.", fg="green"
+                f"Found {len(peak_starts)} variable regions on chromosome {chrom}.",
+                fg="green",
             )
         else:
             secho(
