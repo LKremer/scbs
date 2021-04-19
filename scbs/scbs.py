@@ -571,7 +571,7 @@ def matrix(
             else:
                 echo(f"extracting methylation for regions on chromosome {chrom} ...")
                 smoothed_vals = _load_smoothed_chrom(data_dir, chrom)
-                n_cells = mat.shape[0]
+                n_cells = mat.shape[1]
             observed_chroms.add(chrom)
             prev_chrom = chrom
         # calculate methylation fraction, shrunken residuals etc. for the region:
