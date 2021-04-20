@@ -5,13 +5,26 @@ import pandas as pd
 import numpy as np
 import numba
 import scipy.sparse as sp_sparse
+import click
 from statsmodels.stats.proportion import proportion_confint
-from click import echo, secho
 from numba import njit, prange
 
 
 # ignore division by 0 and division by NaN error
 np.seterr(divide="ignore", invalid="ignore")
+
+
+# print messages go to stderr
+# output file goes to stdout (when using "-" as output file)
+# that way you can pipe the output file e.g. into bedtools
+def echo(*args, **kwargs):
+    click.echo(*args, **kwargs, err=True)
+    return
+
+
+def secho(*args, **kwargs):
+    click.secho(*args, **kwargs, err=True)
+    return
 
 
 def _get_filepath(f):
@@ -581,7 +594,7 @@ def matrix(
         )
         nz_cells = np.nonzero(n_total > 0)[0]
         if nz_cells.size == 0:
-            # skip regions that contain no CpG
+            # skip regions that were not observed in any cell
             n_empty_regions += 1
             continue
         resid_shrunk = _calc_mean_shrunken_residuals(
