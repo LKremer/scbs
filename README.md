@@ -39,7 +39,7 @@ If you encounter a "too many open files" error during `scbs prepare` (`OSError: 
 ## TODO (in order of importance):
 - [x] finish implementing "scbs scan" (overlapping variable windows are now merged automatically, the variance threshold is now estimated from the data itself by taking the top x% (default 5%) most variable genomic windows)
 - [x] allow other input formats (now we support bismark, allc=methylpy and custom user-specified formats)
-- [ ] make things fast with numba (especially "scbs scan")
+- [x] make things fast with numba (at least scan and matrix are now fast, I/O and gzip is now a bottleneck)
 - [ ] test on simulated data and other datasets
 - [ ] write basic tests & docs
-- [ ] add further functionality (e.g. SVD, plotting, clustering, testing for differential methylation between clusters...)
+- [ ] add further functionality (e.g. SVD, plotting, clustering, testing for differential methylation between clusters, usage without CLI...)

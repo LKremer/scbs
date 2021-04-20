@@ -552,6 +552,8 @@ def matrix(
         "chromosome",
         "start",
         "end",
+        "n_sites",
+        "n_cells",
         "cell_name",
         "n_meth",
         "n_obs," "meth_frac",
@@ -589,7 +591,7 @@ def matrix(
             prev_chrom = chrom
         # calculate methylation fraction, shrunken residuals etc. for the region:
         n_regions += 1
-        n_meth, n_total, mfracs = _calc_mfracs(
+        n_meth, n_total, mfracs, n_obs_cells, n_obs_cpgs = _calc_mfracs(
             mat.data, mat.indices, mat.indptr, start, end, n_cells
         )
         nz_cells = np.nonzero(n_total > 0)[0]
@@ -606,6 +608,8 @@ def matrix(
                 chrom,
                 start,
                 end,
+                n_obs_cpgs,
+                n_obs_cells,
                 cell_names[c],
                 n_meth[c],
                 n_total[c],
@@ -741,11 +745,44 @@ def _calc_mean_shrunken_residuals(
 
 
 @njit
+def _count_n_cells(region_indices):
+    """
+    Count the total number of CpGs in a region, based on CSR matrix indices.
+    Only CpGs that have coverage in at least 1 cell are counted.
+    """
+    seen_cells = set()
+    n_cells = 0
+    for cell_idx in region_indices:
+        if cell_idx not in seen_cells:
+            seen_cells.add(cell_idx)
+            n_cells += 1
+    return n_cells
+
+
+@njit
+def _count_n_cpg(region_indptr):
+    """
+    Count the total number of CpGs in a region, based on CSR matrix index pointers.
+    """
+    prev_val = 0
+    n_cpg = 0
+    for val in region_indptr:
+        if val != prev_val:
+            n_cpg += 1
+            prev_val = val
+    return n_cpg
+
+
+@njit
 def _calc_mfracs(data_chrom, indices_chrom, indptr_chrom, start, end, n_cells):
     # slice the methylation values so that we only keep the values in the window
     data = data_chrom[indptr_chrom[start] : indptr_chrom[end + 1]]
     # slice indices
     indices = indices_chrom[indptr_chrom[start] : indptr_chrom[end + 1]]
+    # slice index pointer
+    indptr = indptr_chrom[start : end + 2] - indptr_chrom[start]
+    n_cells = _count_n_cells(indices)  # number of cells with data in the region
+    n_cpg = _count_n_cpg(indptr)  # total number of CpGs in the region
     n_meth = np.zeros(n_cells, dtype=np.int64)
     n_total = np.zeros(n_cells, dtype=np.int64)
     for i in range(data.shape[0]):
@@ -755,7 +792,7 @@ def _calc_mfracs(data_chrom, indices_chrom, indptr_chrom, start, end, n_cells):
         if meth_value == -1:
             continue
         n_meth[cell_i] += meth_value
-    return n_meth, n_total, np.divide(n_meth, n_total)
+    return n_meth, n_total, np.divide(n_meth, n_total), n_cells, n_cpg
 
 
 def scan(data_dir, output, bandwidth, stepsize, var_threshold, threads=-1):
