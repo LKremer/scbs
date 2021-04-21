@@ -557,7 +557,6 @@ def matrix(
         "cell_name",
         "n_meth",
         "n_obs," "meth_frac",
-        # "residual",
         "shrunken_residual",
     ]
     cell_names = _parse_cell_names(data_dir)
@@ -591,10 +590,11 @@ def matrix(
             prev_chrom = chrom
         # calculate methylation fraction, shrunken residuals etc. for the region:
         n_regions += 1
-        n_meth, n_total, mfracs, n_obs_cells, n_obs_cpgs = _calc_mfracs(
+        n_meth, n_total, mfracs, n_obs_cpgs = _calc_region_stats(
             mat.data, mat.indices, mat.indptr, start, end, n_cells
         )
-        nz_cells = np.nonzero(n_total > 0)[0]
+        nz_cells = np.nonzero(n_total > 0)[0]  # index of cells that observed the region
+        n_obs_cells = nz_cells.shape[0]  # in how many cells we observed the region
         if nz_cells.size == 0:
             # skip regions that were not observed in any cell
             n_empty_regions += 1
@@ -614,7 +614,6 @@ def matrix(
                 n_meth[c],
                 n_total[c],
                 mfracs[c],
-                # resid[c],
                 resid_shrunk[c],
             ]
             if keep_other_columns and other_columns:
@@ -744,19 +743,20 @@ def _calc_mean_shrunken_residuals(
     return shrunken_resid
 
 
-@njit
-def _count_n_cells(region_indices):
-    """
-    Count the total number of CpGs in a region, based on CSR matrix indices.
-    Only CpGs that have coverage in at least 1 cell are counted.
-    """
-    seen_cells = set()
-    n_cells = 0
-    for cell_idx in region_indices:
-        if cell_idx not in seen_cells:
-            seen_cells.add(cell_idx)
-            n_cells += 1
-    return n_cells
+# currently not needed but could be useful:
+# @njit
+# def _count_n_cells(region_indices):
+#     """
+#     Count the total number of CpGs in a region, based on CSR matrix indices.
+#     Only CpGs that have coverage in at least 1 cell are counted.
+#     """
+#     seen_cells = set()
+#     n_cells = 0
+#     for cell_idx in region_indices:
+#         if cell_idx not in seen_cells:
+#             seen_cells.add(cell_idx)
+#             n_cells += 1
+#     return n_cells
 
 
 @njit
@@ -774,15 +774,14 @@ def _count_n_cpg(region_indptr):
 
 
 @njit
-def _calc_mfracs(data_chrom, indices_chrom, indptr_chrom, start, end, n_cells):
+def _calc_region_stats(data_chrom, indices_chrom, indptr_chrom, start, end, n_cells):
     # slice the methylation values so that we only keep the values in the window
     data = data_chrom[indptr_chrom[start] : indptr_chrom[end + 1]]
     # slice indices
     indices = indices_chrom[indptr_chrom[start] : indptr_chrom[end + 1]]
     # slice index pointer
     indptr = indptr_chrom[start : end + 2] - indptr_chrom[start]
-    n_cells = _count_n_cells(indices)  # number of cells with data in the region
-    n_cpg = _count_n_cpg(indptr)  # total number of CpGs in the region
+    n_obs_cpg = _count_n_cpg(indptr)  # total number of CpGs in the region
     n_meth = np.zeros(n_cells, dtype=np.int64)
     n_total = np.zeros(n_cells, dtype=np.int64)
     for i in range(data.shape[0]):
@@ -792,7 +791,7 @@ def _calc_mfracs(data_chrom, indices_chrom, indptr_chrom, start, end, n_cells):
         if meth_value == -1:
             continue
         n_meth[cell_i] += meth_value
-    return n_meth, n_total, np.divide(n_meth, n_total), n_cells, n_cpg
+    return n_meth, n_total, np.divide(n_meth, n_total), n_obs_cpg
 
 
 def scan(data_dir, output, bandwidth, stepsize, var_threshold, threads=-1):
