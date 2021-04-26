@@ -604,7 +604,14 @@ def matrix(
             n_empty_regions += 1
             continue
         resid_shrunk = _calc_mean_shrunken_residuals(
-            mat.data, mat.indices, mat.indptr, start, end, smoothed_vals, n_cells, chrom_len
+            mat.data,
+            mat.indices,
+            mat.indptr,
+            start,
+            end,
+            smoothed_vals,
+            n_cells,
+            chrom_len,
         )
         # write "count" table
         for c in nz_cells:

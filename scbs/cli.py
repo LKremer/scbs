@@ -102,22 +102,26 @@ def cli():
     default="bismark",
     help="""
     Specify the format of the input files. When using Bismark's '.cov' format,
-    type --format bismark. When using using methylpy's 'allc' format, type --input-format allc.
-    
+    type --format bismark. When using using methylpy's 'allc' format, type
+    --input-format allc.
+
     \b
     If none of the above apply, specify a costum format enclosed by quotation marks:
-    The positions should be separate with ':' and denote:
+    The positions should be separated with ':' and denote:
     \b
     1. No. (1-indexed) of column with chromosome name
     2. No. (1-indexed) of column with genomic position
     3. No. (1-indexed) of column with methylated counts
-    4. No. (1-indexed)of column with unmethylated counts(m) / coverage(c). Depending on which of the two is used, specify with 'm' or 'c'.
+    4. No. (1-indexed) of column with unmethylated counts(m) / coverage(c). Depending
+    on which of the two is used, specify with 'm' or 'c'.
     5. Type of separation, eg '\\t' for tab-separation or ',' for comma-separation
     6. 0 if the file has a header, 1 if the file does not have a header
     \b
     Example: --input-format '1:2:3:4m:\\t:1'
 
-    If nothing is specified, the default format is bismark (--input-format '1:2:5:6c:\\t:0'); --input-format 'allc' correspods to --input-format '1:2:5:6m:\\t:1'""",
+    If nothing is specified, the default format is bismark
+    (--input-format '1:2:5:6c:\\t:0'); --input-format 'allc' correspods to
+    --input-format '1:2:5:6m:\\t:1'""",
 )
 @click.option(
     "--header",
@@ -318,10 +322,11 @@ def matrix_cli(**kwargs):
 )
 @click.option(
     "--var-threshold",
-    default=0.05,
+    default=0.02,
     show_default=True,
-    help="The variance threshold. The default of 0.05 means that the top 5% most variable "
-    "genomic bins will be merged and reported.",
+    help="The variance threshold, i.e. 0.02 means that the top 2% "
+    "most variable genomic bins will be reported. Overlapping variable bins "
+    "are merged.",
 )
 @click.option(
     "--threads",
