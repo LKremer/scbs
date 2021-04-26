@@ -1,3 +1,4 @@
+import scbs
 import click
 import numba
 from click import style
@@ -52,6 +53,8 @@ def _set_n_threads(ctx, param, value):
     help_headers_color="bright_white",
     help_options_color="green",
     help=f"""
+        This is {style("scbs version " + scbs.__version__, fg="bright_white")}
+
         Below you find a list of all available commands.
         To find out what they do and how to use them, check
         their help like this:
