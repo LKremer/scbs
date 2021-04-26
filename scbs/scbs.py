@@ -664,7 +664,7 @@ def _find_peaks(smoothed_vars, swindow_centers, var_cutoff, half_bw):
     return peak_starts, peak_ends
 
 
-# @njit(parallel=True)
+@njit(parallel=True)
 def _move_windows(
     start,
     end,
@@ -696,7 +696,7 @@ def _move_windows(
     return windows, smoothed_var
 
 
-#@njit(nogil=True)
+@njit(nogil=True)
 def _calc_mean_shrunken_residuals(
     data_chrom,
     indices_chrom,
