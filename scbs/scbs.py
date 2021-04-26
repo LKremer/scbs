@@ -556,7 +556,8 @@ def matrix(
         "n_cells",
         "cell_name",
         "n_meth",
-        "n_obs," "meth_frac",
+        "n_obs",
+        "meth_frac",
         "shrunken_residual",
     ]
     cell_names = _parse_cell_names(data_dir)
@@ -582,12 +583,15 @@ def matrix(
             mat = _load_chrom_mat(data_dir, chrom)
             if mat is None:
                 unknown_chroms.add(chrom)
+                observed_chroms.add(chrom)
+                prev_chrom = chrom
+                continue  # skip this region
             else:
                 echo(f"extracting methylation for regions on chromosome {chrom} ...")
                 smoothed_vals = _load_smoothed_chrom(data_dir, chrom)
-                n_cells = mat.shape[1]
-            observed_chroms.add(chrom)
-            prev_chrom = chrom
+                chrom_len, n_cells = mat.shape
+                observed_chroms.add(chrom)
+                prev_chrom = chrom
         # calculate methylation fraction, shrunken residuals etc. for the region:
         n_regions += 1
         n_meth, n_total, mfracs, n_obs_cpgs = _calc_region_stats(
@@ -600,7 +604,7 @@ def matrix(
             n_empty_regions += 1
             continue
         resid_shrunk = _calc_mean_shrunken_residuals(
-            mat.data, mat.indices, mat.indptr, start, end, smoothed_vals, n_cells
+            mat.data, mat.indices, mat.indptr, start, end, smoothed_vals, n_cells, chrom_len
         )
         # write "count" table
         for c in nz_cells:
@@ -660,7 +664,7 @@ def _find_peaks(smoothed_vars, swindow_centers, var_cutoff, half_bw):
     return peak_starts, peak_ends
 
 
-@njit(parallel=True)
+# @njit(parallel=True)
 def _move_windows(
     start,
     end,
@@ -671,6 +675,7 @@ def _move_windows(
     indptr_chrom,
     smoothed_vals,
     n_cells,
+    chrom_len,
 ):
     # shift windows along the chromosome and calculate the variance for each window.
     windows = np.arange(start, end, stepsize)
@@ -685,12 +690,13 @@ def _move_windows(
             pos + half_bw,
             smoothed_vals,
             n_cells,
+            chrom_len,
         )
         smoothed_var[i] = np.nanvar(mean_shrunk_resid)
     return windows, smoothed_var
 
 
-@njit(nogil=True)
+#@njit(nogil=True)
 def _calc_mean_shrunken_residuals(
     data_chrom,
     indices_chrom,
@@ -699,18 +705,24 @@ def _calc_mean_shrunken_residuals(
     end,
     smoothed_vals,
     n_cells,
+    chrom_len,
     shrinkage_factor=1,
 ):
     shrunken_resid = np.full(n_cells, np.nan)
+    if start > chrom_len:
+        return shrunken_resid
+    end += 1
+    if end > chrom_len:
+        end = chrom_len
     # slice the methylation values so that we only keep the values in the window
-    data = data_chrom[indptr_chrom[start] : indptr_chrom[end + 1]]
+    data = data_chrom[indptr_chrom[start] : indptr_chrom[end]]
     if data.size == 0:
         # return NaN for regions without coverage or regions without CpGs
         return shrunken_resid
     # slice indices
-    indices = indices_chrom[indptr_chrom[start] : indptr_chrom[end + 1]]
+    indices = indices_chrom[indptr_chrom[start] : indptr_chrom[end]]
     # slice index pointer
-    indptr = indptr_chrom[start : end + 2] - indptr_chrom[start]
+    indptr = indptr_chrom[start : end + 1] - indptr_chrom[start]
     indptr_diff = np.diff(indptr)
 
     n_obs = np.zeros(n_cells, dtype=np.int64)
@@ -814,7 +826,7 @@ def scan(data_dir, output, bandwidth, stepsize, var_threshold, threads=-1):
         # n_obs = mat.getnnz(axis=1)
         # n_meth = np.ravel(np.sum(mat > 0, axis=1))
         # mfracs = np.divide(n_meth, n_obs)
-        n_cells = mat.shape[1]
+        chrom_len, n_cells = mat.shape
         cpg_pos_chrom = np.nonzero(mat.getnnz(axis=1))[0]
 
         if n_threads > 1:
@@ -856,6 +868,7 @@ def scan(data_dir, output, bandwidth, stepsize, var_threshold, threads=-1):
                     pe,
                     smoothed_cpg_vals,
                     n_cells,
+                    chrom_len,
                 )
             )
             bed_entry = f"{chrom}\t{ps}\t{pe}\t{peak_var}\n"
