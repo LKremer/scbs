@@ -854,6 +854,7 @@ def scan(data_dir, output, bandwidth, stepsize, var_threshold, threads=-1):
             mat.indptr,
             smoothed_cpg_vals,
             n_cells,
+            chrom_len
         )
 
         if var_threshold_value is None:
