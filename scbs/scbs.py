@@ -793,7 +793,9 @@ def _count_n_cpg(region_indptr):
 
 
 @njit
-def _calc_region_stats(data_chrom, indices_chrom, indptr_chrom, start, end, n_cells, chrom_len):
+def _calc_region_stats(
+    data_chrom, indices_chrom, indptr_chrom, start, end, n_cells, chrom_len
+):
     n_meth = np.zeros(n_cells, dtype=np.int64)
     n_total = np.zeros(n_cells, dtype=np.int64)
     if start > chrom_len:
@@ -861,7 +863,7 @@ def scan(data_dir, output, bandwidth, stepsize, var_threshold, threads=-1):
             mat.indptr,
             smoothed_cpg_vals,
             n_cells,
-            chrom_len
+            chrom_len,
         )
 
         if var_threshold_value is None:
