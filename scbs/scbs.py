@@ -595,7 +595,7 @@ def matrix(
         # calculate methylation fraction, shrunken residuals etc. for the region:
         n_regions += 1
         n_meth, n_total, mfracs, n_obs_cpgs = _calc_region_stats(
-            mat.data, mat.indices, mat.indptr, start, end, n_cells
+            mat.data, mat.indices, mat.indptr, start, end, n_cells, chrom_len
         )
         nz_cells = np.nonzero(n_total > 0)[0]  # index of cells that observed the region
         n_obs_cells = nz_cells.shape[0]  # in how many cells we observed the region
@@ -793,23 +793,30 @@ def _count_n_cpg(region_indptr):
 
 
 @njit
-def _calc_region_stats(data_chrom, indices_chrom, indptr_chrom, start, end, n_cells):
-    # slice the methylation values so that we only keep the values in the window
-    data = data_chrom[indptr_chrom[start] : indptr_chrom[end + 1]]
-    # slice indices
-    indices = indices_chrom[indptr_chrom[start] : indptr_chrom[end + 1]]
-    # slice index pointer
-    indptr = indptr_chrom[start : end + 2] - indptr_chrom[start]
-    n_obs_cpg = _count_n_cpg(indptr)  # total number of CpGs in the region
+def _calc_region_stats(data_chrom, indices_chrom, indptr_chrom, start, end, n_cells, chrom_len):
     n_meth = np.zeros(n_cells, dtype=np.int64)
     n_total = np.zeros(n_cells, dtype=np.int64)
-    for i in range(data.shape[0]):
-        cell_i = indices[i]
-        meth_value = data[i]
-        n_total[cell_i] += 1
-        if meth_value == -1:
-            continue
-        n_meth[cell_i] += meth_value
+    if start > chrom_len:
+        n_obs_cpg = 0
+    else:
+        end += 1
+        if end > chrom_len:
+            end = chrom_len
+        # slice the methylation values so that we only keep the values in the window
+        data = data_chrom[indptr_chrom[start] : indptr_chrom[end]]
+        if data.size > 0:
+            # slice indices
+            indices = indices_chrom[indptr_chrom[start] : indptr_chrom[end]]
+            # slice index pointer
+            indptr = indptr_chrom[start : end + 1] - indptr_chrom[start]
+            n_obs_cpg = _count_n_cpg(indptr)  # total number of CpGs in the region
+            for i in range(data.shape[0]):
+                cell_i = indices[i]
+                meth_value = data[i]
+                n_total[cell_i] += 1
+                if meth_value == -1:
+                    continue
+                n_meth[cell_i] += meth_value
     return n_meth, n_total, np.divide(n_meth, n_total), n_obs_cpg
 
 
