@@ -314,7 +314,7 @@ def matrix_cli(**kwargs):
 )
 @click.option(
     "--stepsize",
-    default=50,
+    default=10,
     type=click.IntRange(min=1, max=1e6),
     metavar="INTEGER",
     show_default=True,
