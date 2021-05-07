@@ -8,6 +8,8 @@ import scipy.sparse as sp_sparse
 import click
 from statsmodels.stats.proportion import proportion_confint
 from numba import njit, prange
+from sklearn.decomposition import PCA
+from sklearn.preprocessing import scale
 
 
 # ignore division by 0 and division by NaN error
@@ -901,3 +903,80 @@ def scan(data_dir, output, bandwidth, stepsize, var_threshold, threads=-1):
                 fg="red",
             )
     return
+
+
+def imputing_pca(
+    X, n_components=10, n_iterations=10, scale_features=True, center_features=True
+):
+    # center and scale features
+    X = scale(X, axis=0, with_mean=center_features, with_std=scale_features)
+    # for each set of predicted values, we calculated how similar it is to the values
+    # we predicted in the previous iteration, so that we can roughly see when our
+    # prediction converges
+    dist = np.full(n_iterations, fill_value=np.nan)
+    # varexpl = np.full(n_iterations, fill_value=np.nan)
+    nan_positions = np.isnan(X)
+    X[nan_positions] = 0  # zero is our first guess for all missing values
+    # start iterative imputation
+    for i in range(n_iterations):
+        echo(f"PCA iteration {i + 1}...")
+        previous_guess = X[nan_positions]  # what we imputed in the previous iteration
+        # PCA on the imputed matrix
+        pca = PCA(n_components=n_components)
+        pca.fit(X)
+        # impute missing values with PCA
+        new_guess = (pca.inverse_transform(pca.transform(X)))[nan_positions]
+        X[nan_positions] = new_guess
+        # compare our new imputed values to the ones from the previous round
+        dist[i] = np.mean((previous_guess - new_guess) ** 2)
+        # varexpl[i] = np.sum(pca.explained_variance_ratio_)
+    pca.prediction_dist_iter = dist  # distance between predicted values
+    # pca.total_var_exp_iter = varexpl
+    pca.X_imputed = X
+    return pca
+
+
+def reduce(
+    matrix_path,
+    center_cells=False,  # subtract the mean methylation from each cell? (should be useful for GpC accessibility data)
+    min_obs_region=0.3,  # minimum allowed fraction of missing values for each region
+    min_obs_cell=0.05,  # minimum allowed fraction of missing values for each cell (note that this threshold is applied after regions were filtered)
+    n_pc=10,  # number of principal components to compute
+    n_iterations=10,  # number of iterations for PCA imputation
+    n_neighbors=20,  # umap param
+    min_dist=0.1,  # umap param
+):
+    """
+    Takes the output of 'scbs matrix' and reduces it to fewer dimensions, fist by
+    PCA and then by UMAP.
+    """
+    df = pd.read_csv(matrix_path, header=0)
+    # make a proper matrix (cell x region)
+    df_wide = (
+        df.assign(
+            region=df.apply(
+                lambda x: f"{x['chromosome']}:{x['start']}-{x['end']}", axis=1
+            )
+        )
+        .loc[:, ["cell_name", "region", "shrunken_residual"]]
+        .pivot(index="cell_name", columns="region", values="shrunken_residual")
+    )
+    X = np.array(df_wide)
+    # filter regions that were not observed in many cells
+    na_frac_region = np.sum(np.isnan(X), axis=0) / X.shape[0]
+    X = X[:, na_frac_region <= (1 - min_obs_region)]
+    # filter cells that did not observe many regions
+    na_frac_cell = np.sum(np.isnan(X), axis=1) / X.shape[1]
+    X = X[na_frac_cell <= (1 - min_obs_cell), :]
+    cell_names = df_wide.index[na_frac_cell <= (1 - min_obs_cell)]
+    # optionally: for each value, subtract the mean methylation of that cell
+    # this is mostly for GpC-accessibility data since some cells may receive more
+    # methylase than others
+    if center_cells:
+        X = scale(X, axis=1, with_mean=True, with_std=False)
+    pca = imputing_pca(X, n_components=n_pc, n_iterations=n_iterations)
+    X_pca_reduced = pca.transform(pca.X)
+    reducer = umap.UMAP(n_neighbors=n_neighbors, min_dist=min_dist)
+    X_umap_reduced = reducer.fit_transform(X_pca_reduced)
+
+    return  # todo
