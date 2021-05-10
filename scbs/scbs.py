@@ -1,4 +1,4 @@
-import os
+    import os
 import gzip
 import glob
 import pandas as pd
@@ -938,17 +938,18 @@ def imputing_pca(
 
 
 def reduce(
-    matrix_path,
+    matrix_path,  # path to a matrix produced by scbs matrix
+    value_column="shrunken_residual",  # the name of the column containing the methylation values
     center_cells=False,  # subtract the mean methylation from each cell? (should be useful for GpC accessibility data)
     min_obs_region=0.3,  # minimum allowed fraction of missing values for each region
     min_obs_cell=0.05,  # minimum allowed fraction of missing values for each cell (note that this threshold is applied after regions were filtered)
     n_pc=10,  # number of principal components to compute
     n_iterations=10,  # number of iterations for PCA imputation
-    n_neighbors=20,  # umap param
-    min_dist=0.1,  # umap param
+    n_neighbors=20,  # a umap parameter
+    min_dist=0.1,  # a umap parameter
 ):
     """
-    Takes the output of 'scbs matrix' and reduces it to fewer dimensions, fist by
+    Takes the output of 'scbs matrix' and reduces it to fewer dimensions, first by
     PCA and then by UMAP.
     """
     df = pd.read_csv(matrix_path, header=0)
@@ -960,8 +961,8 @@ def reduce(
                 lambda x: f"{x['chromosome']}:{x['start']}-{x['end']}", axis=1
             )
         )
-        .loc[:, ["cell_name", "region", "shrunken_residual"]]
-        .pivot(index="cell_name", columns="region", values="shrunken_residual")
+        .loc[:, ["cell_name", "region", value_column]]
+        .pivot(index="cell_name", columns="region", values=value_column)
     )
     X = np.array(df_wide)
     Xdim_old = X.shape
