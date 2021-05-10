@@ -10,6 +10,7 @@ from statsmodels.stats.proportion import proportion_confint
 from numba import njit, prange
 from sklearn.decomposition import PCA
 from sklearn.preprocessing import scale
+from umap import UMAP
 
 
 # ignore division by 0 and division by NaN error
@@ -952,6 +953,7 @@ def reduce(
     """
     df = pd.read_csv(matrix_path, header=0)
     # make a proper matrix (cell x region)
+    echo("Converting long matrix to wide matrix...")
     df_wide = (
         df.assign(
             region=df.apply(
@@ -962,21 +964,36 @@ def reduce(
         .pivot(index="cell_name", columns="region", values="shrunken_residual")
     )
     X = np.array(df_wide)
+    Xdim_old = X.shape
     # filter regions that were not observed in many cells
     na_frac_region = np.sum(np.isnan(X), axis=0) / X.shape[0]
     X = X[:, na_frac_region <= (1 - min_obs_region)]
+    echo(f"filtered {Xdim_old[1] - X.shape[1]} of {Xdim_old[1]} regions.")
     # filter cells that did not observe many regions
     na_frac_cell = np.sum(np.isnan(X), axis=1) / X.shape[1]
     X = X[na_frac_cell <= (1 - min_obs_cell), :]
+    echo(f"filtered {Xdim_old[0] - X.shape[0]} of {Xdim_old[0]} cells.")
     cell_names = df_wide.index[na_frac_cell <= (1 - min_obs_cell)]
     # optionally: for each value, subtract the mean methylation of that cell
     # this is mostly for GpC-accessibility data since some cells may receive more
     # methylase than others
     if center_cells:
         X = scale(X, axis=1, with_mean=True, with_std=False)
+        echo("centered cells.")
+    # run our modified PCA
+    echo("Running PCA...")
     pca = imputing_pca(X, n_components=n_pc, n_iterations=n_iterations)
-    X_pca_reduced = pca.transform(pca.X)
-    reducer = umap.UMAP(n_neighbors=n_neighbors, min_dist=min_dist)
+    X_pca_reduced = pca.transform(pca.X_imputed)
+    echo("Running UMAP...")
+    reducer = UMAP(n_neighbors=n_neighbors, min_dist=min_dist)
     X_umap_reduced = reducer.fit_transform(X_pca_reduced)
-
-    return  # todo
+    # generate output table as pandas df
+    col_names = ["UMAP" + str(i + 1) for i in range(X_umap_reduced.shape[1])] + [
+        "PC" + str(i + 1) for i in range(X_pca_reduced.shape[1])
+    ]
+    out_df = pd.DataFrame(
+        data=np.concatenate((X_umap_reduced, X_pca_reduced), axis=1),
+        index=cell_names,
+        columns=col_names,
+    )
+    return out_df
