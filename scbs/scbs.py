@@ -938,7 +938,7 @@ def imputing_pca(
 
 
 def reduce(
-    matrix_path,  # path to a matrix produced by scbs matrix
+    matrix,  # path to a matrix produced by scbs matrix OR 
     value_column="shrunken_residual",  # the name of the column containing the methylation values
     center_cells=False,  # subtract the mean methylation from each cell? (should be useful for GpC accessibility data)
     min_obs_region=0.3,  # minimum allowed fraction of missing values for each region
@@ -952,7 +952,12 @@ def reduce(
     Takes the output of 'scbs matrix' and reduces it to fewer dimensions, first by
     PCA and then by UMAP.
     """
-    df = pd.read_csv(matrix_path, header=0)
+    if isinstance(matrix, str):
+        df = pd.read_csv(matrix, header=0)
+    elif isinstance(matrix, pd.core.frame.DataFrame):
+        df = matrix
+    else:
+        raise Exception("'matrix' must be either a path or a pandas DataFrame.")
     # make a proper matrix (cell x region)
     echo("Converting long matrix to wide matrix...")
     df_wide = (
