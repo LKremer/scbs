@@ -941,8 +941,8 @@ def reduce(
     matrix,  # filepath to a matrix produced by scbs matrix OR pandas DataFrame
     value_column="shrunken_residual",  # the name of the column containing the methylation values
     center_cells=False,  # subtract the mean methylation from each cell? (should be useful for GpC accessibility data)
-    max_na_region=.7,  # minimum allowed fraction of missing values for each region. Set this to 1 to prevent filtering.
-    max_na_cell=.95,  # minimum allowed fraction of missing values for each cell (note that this threshold is applied after regions were filtered)
+    max_na_region=.7,  # maximum allowed fraction of missing values for each region. Set this to 1 to prevent filtering.
+    max_na_cell=.95,  # maximum allowed fraction of missing values for each cell (note that this threshold is applied after regions were filtered)
     n_pc=10,  # number of principal components to compute
     n_iterations=10,  # number of iterations for PCA imputation
     n_neighbors=20,  # a umap parameter
@@ -980,6 +980,7 @@ def reduce(
     X = X[na_frac_cell <= max_na_cell, :]
     echo(f"filtered {Xdim_old[0] - X.shape[0]} of {Xdim_old[0]} cells.")
     cell_names = df_wide.index[na_frac_cell <= max_na_cell]
+    percent_missing = na_frac_cell[na_frac_cell <= max_na_cell] * 100
     # optionally: for each value, subtract the mean methylation of that cell
     # this is mostly for GpC-accessibility data since some cells may receive more
     # methylase than others
@@ -1002,4 +1003,5 @@ def reduce(
         index=cell_names,
         columns=col_names,
     )
+    out_df["percent_missing"] = percent_missing
     return out_df, pca
