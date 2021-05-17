@@ -938,11 +938,11 @@ def imputing_pca(
 
 
 def reduce(
-    matrix,  # path to a matrix produced by scbs matrix OR 
+    matrix,  # filepath to a matrix produced by scbs matrix OR pandas DataFrame
     value_column="shrunken_residual",  # the name of the column containing the methylation values
     center_cells=False,  # subtract the mean methylation from each cell? (should be useful for GpC accessibility data)
-    min_obs_region=0.3,  # minimum allowed fraction of missing values for each region
-    min_obs_cell=0.05,  # minimum allowed fraction of missing values for each cell (note that this threshold is applied after regions were filtered)
+    max_na_region=.7,  # minimum allowed fraction of missing values for each region. Set this to 1 to prevent filtering.
+    max_na_cell=.95,  # minimum allowed fraction of missing values for each cell (note that this threshold is applied after regions were filtered)
     n_pc=10,  # number of principal components to compute
     n_iterations=10,  # number of iterations for PCA imputation
     n_neighbors=20,  # a umap parameter
@@ -973,13 +973,13 @@ def reduce(
     Xdim_old = X.shape
     # filter regions that were not observed in many cells
     na_frac_region = np.sum(np.isnan(X), axis=0) / X.shape[0]
-    X = X[:, na_frac_region <= (1 - min_obs_region)]
+    X = X[:, na_frac_region <= max_na_region]
     echo(f"filtered {Xdim_old[1] - X.shape[1]} of {Xdim_old[1]} regions.")
     # filter cells that did not observe many regions
     na_frac_cell = np.sum(np.isnan(X), axis=1) / X.shape[1]
-    X = X[na_frac_cell <= (1 - min_obs_cell), :]
+    X = X[na_frac_cell <= max_na_cell, :]
     echo(f"filtered {Xdim_old[0] - X.shape[0]} of {Xdim_old[0]} cells.")
-    cell_names = df_wide.index[na_frac_cell <= (1 - min_obs_cell)]
+    cell_names = df_wide.index[na_frac_cell <= max_na_cell]
     # optionally: for each value, subtract the mean methylation of that cell
     # this is mostly for GpC-accessibility data since some cells may receive more
     # methylase than others
@@ -987,10 +987,10 @@ def reduce(
         X = scale(X, axis=1, with_mean=True, with_std=False)
         echo("centered cells.")
     # run our modified PCA
-    echo("Running PCA...")
+    echo(f"running modified PCA ({n_pc=}, {n_iterations=})...")
     pca = imputing_pca(X, n_components=n_pc, n_iterations=n_iterations)
     X_pca_reduced = pca.transform(pca.X_imputed)
-    echo("Running UMAP...")
+    echo(f"running UMAP ({n_neighbors=}, {min_dist=})...")
     reducer = UMAP(n_neighbors=n_neighbors, min_dist=min_dist)
     X_umap_reduced = reducer.fit_transform(X_pca_reduced)
     # generate output table as pandas df
@@ -1002,4 +1002,4 @@ def reduce(
         index=cell_names,
         columns=col_names,
     )
-    return out_df
+    return out_df, pca
