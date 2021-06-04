@@ -293,8 +293,13 @@ def _write_column_names(output_dir, cell_names, fname="column_header.txt"):
 
 
 def _human_to_computer(file_format):
+    """
+    Converts the human-readable input file format to a tuple
+    """
+
+    file_format = file_format.lower().split(":")
     if len(file_format) == 1:
-        if file_format[0].lower() in ("bismarck", "bismark"):
+        if file_format[0] in ("bismarck", "bismark"):
             c_col, p_col, m_col, u_col, coverage, sep, header = (
                 0,
                 1,
@@ -304,7 +309,7 @@ def _human_to_computer(file_format):
                 "\t",
                 False,
             )
-        elif file_format[0].lower() == "allc":
+        elif file_format[0] in ("allc", "methylpy"):
             c_col, p_col, m_col, u_col, coverage, sep, header = (
                 0,
                 1,
@@ -315,33 +320,29 @@ def _human_to_computer(file_format):
                 True,
             )
         else:
-            raise Exception(
-                "Format not correct. Check --help for further information.", fg="red"
-            )
+            raise Exception(f"{file_format[0]} is not a known format")
     elif len(file_format) == 6:
         c_col = int(file_format[0]) - 1
         p_col = int(file_format[1]) - 1
         m_col = int(file_format[2]) - 1
         u_col = int(file_format[3][0:-1]) - 1
-        info = file_format[3][-1].lower()
+        info = file_format[3][-1]
         if info == "c":
             coverage = True
         elif info == "m":
             coverage = False
         else:
             raise Exception(
-                "Format for column with coverage/methylation must be an integer and "
-                "either c for coverage or m for methylation (eg 4c)",
-                fg="red",
+                "The 4th column of a custom input format must contain an integer and "
+                "either 'c' for coverage or 'm' for methylation (e.g. '4c'), but you "
+                f"provided '{file_format[3]}'."
             )
         sep = str(file_format[4])
         if sep == "\\t":
             sep = "\t"
         header = bool(int(file_format[5]))
     else:
-        raise Exception(
-            "Format not correct. Check --help for further information.", fg="red"
-        )
+        raise Exception("Invalid number of ':'-separated values in custom input format")
     return c_col, p_col, m_col, u_col, coverage, sep, header
 
 
@@ -356,12 +357,18 @@ def _line_to_values(line, c_col, p_col, m_col, u_col, coverage):
     return chrom, pos, n_meth, n_unmeth
 
 
-def _dump_coo_files(fpaths, input_format, n_cells, header, output_dir):
+def _dump_coo_files(fpaths, input_format, n_cells, output_dir):
     os.makedirs(output_dir, exist_ok=True)
-    # c_col, p_col, m_col, u_col = [f - 1 for f in input_format]
-    c_col, p_col, m_col, u_col, coverage, sep, header = _human_to_computer(
-        input_format.split(":")
-    )
+    try:
+        c_col, p_col, m_col, u_col, coverage, sep, header = _human_to_computer(
+            input_format
+        )
+    except:
+        raise Exception(
+            f"Unknown input file format '{input_format}'.\nValid options include "
+            "'bismark', 'allc', 'methylpy' or a custom ':'-separated format "
+            "(check 'scbs prepare --help' for details)."
+        )
     coo_files = {}
     chrom_sizes = {}
     for cell_n, cov_file in enumerate(fpaths):
@@ -404,7 +411,7 @@ def _write_summary_stats(data_dir, cell_names, n_obs, n_meth):
     return out_path
 
 
-def prepare(input_files, data_dir, input_format, header):
+def prepare(input_files, data_dir, input_format):
     cell_names = _get_cell_names(input_files)
     n_cells = len(cell_names)
     # we use this opportunity to count some basic summary stats
@@ -418,7 +425,7 @@ def prepare(input_files, data_dir, input_format, header):
     # more efficient format (CSR).
     echo(f"Processing {n_cells} methylation files...")
     coo_files, chrom_sizes = _dump_coo_files(
-        input_files, input_format, n_cells, header, data_dir
+        input_files, input_format, n_cells, data_dir
     )
     echo(
         "\nStoring methylation data in 'compressed "
@@ -941,8 +948,8 @@ def reduce(
     matrix,  # filepath to a matrix produced by scbs matrix OR pandas DataFrame
     value_column="shrunken_residual",  # the name of the column containing the methylation values
     center_cells=False,  # subtract the mean methylation from each cell? (should be useful for GpC accessibility data)
-    max_na_region=.7,  # maximum allowed fraction of missing values for each region. Set this to 1 to prevent filtering.
-    max_na_cell=.95,  # maximum allowed fraction of missing values for each cell (note that this threshold is applied after regions were filtered)
+    max_na_region=0.7,  # maximum allowed fraction of missing values for each region. Set this to 1 to prevent filtering.
+    max_na_cell=0.95,  # maximum allowed fraction of missing values for each cell (note that this threshold is applied after regions were filtered)
     n_pc=10,  # number of principal components to compute
     n_iterations=10,  # number of iterations for PCA imputation
     n_neighbors=20,  # a umap parameter

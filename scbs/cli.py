@@ -101,33 +101,27 @@ def cli():
     "--input-format",
     default="bismark",
     help="""
-    Specify the format of the input files. When using Bismark's '.cov' format,
-    type --format bismark. When using using methylpy's 'allc' format, type
-    --input-format allc.
+    Specify the format of the input files. Options: 'bismark' (default),
+    'methylpy', 'allc' or custom (see below).
 
     \b
-    If none of the above apply, specify a costum format enclosed by quotation marks:
-    The positions should be separated with ':' and denote:
-    \b
-    1. No. (1-indexed) of column with chromosome name
-    2. No. (1-indexed) of column with genomic position
-    3. No. (1-indexed) of column with methylated counts
-    4. No. (1-indexed) of column with unmethylated counts(m) / coverage(c). Depending
-    on which of the two is used, specify with 'm' or 'c'.
-    5. Type of separation, eg '\\t' for tab-separation or ',' for comma-separation
-    6. 0 if the file has a header, 1 if the file does not have a header
-    \b
-    Example: --input-format '1:2:3:4m:\\t:1'
+    You can specify a costum format by specifying the separator, whether the
+    file has a header, and which information is stored in which columns. These
+    values should be separated by ':' and enclosed by quotation marks, for
+    example --input-format '1:2:3:4m:\\t:1'
 
-    If nothing is specified, the default format is bismark
-    (--input-format '1:2:5:6c:\\t:0'); --input-format 'allc' correspods to
-    --input-format '1:2:5:6m:\\t:1'""",
-)
-@click.option(
-    "--header",
-    is_flag=True,
-    help="Use this when input files have a column header [default: off, not "
-    "required when using Bismark files]",
+    \b
+    The six ':'-separated values denote:
+    1. The column number that contains the chromosome name
+    2. The column number that contains the genomic position
+    3. The column number that contains the methylated counts
+    4. The column number that contains either unmethylated counts (m) or the total
+    coverage (c) followed by either 'm' or 'c', e.g. '4c' to denote that the 4th column
+    contains the coverage
+    5. The separator, e.g. '\\t' for tsv files or ',' for csv
+    6. Either '0' if the file has a header or '1' if it does not have a header
+    All column numbers are 1-indexed, i.e. to define the first column use '1' and not
+    '0'.""",
 )
 def prepare_cli(**kwargs):
     timer = Timer(label="prepare")
@@ -295,7 +289,7 @@ def matrix_cli(**kwargs):
     {style("OUTPUT", fg="green")} is the path of the output file in '.bed' format,
     containing the variable windows that were found.
     """,
-    short_help="Find regions with variable methylation (work in progress)",
+    short_help="Scan the genome to discover regions with variable methylation",
     no_args_is_help=True,
 )
 @click.argument(
