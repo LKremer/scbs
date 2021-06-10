@@ -1,4 +1,5 @@
 import os
+import sys
 import gzip
 import glob
 import pandas as pd
@@ -261,23 +262,34 @@ def _get_cell_names(cov_files):
 
 
 def _iterate_covfile(cov_file, c_col, p_col, m_col, u_col, coverage, sep, header):
-    if cov_file.name.lower().endswith(".gz"):
-        # handle gzip-compressed file
-        lines = gzip.decompress(cov_file.read()).decode().strip().split("\n")
-        if header:
-            lines = lines[1:]
-        for line in lines:
-            yield _line_to_values(
-                line.strip().split(sep), c_col, p_col, m_col, u_col, coverage
-            )
-    else:
-        # handle uncompressed file
-        if header:
-            _ = cov_file.readline()
-        for line in cov_file:
-            yield _line_to_values(
-                line.decode().strip().split(sep), c_col, p_col, m_col, u_col, coverage
-            )
+    try:
+        if cov_file.name.lower().endswith(".gz"):
+            # handle gzip-compressed file
+            lines = gzip.decompress(cov_file.read()).decode().strip().split("\n")
+            if header:
+                lines = lines[1:]
+            for line in lines:
+                yield _line_to_values(
+                    line.strip().split(sep), c_col, p_col, m_col, u_col, coverage
+                )
+        else:
+            # handle uncompressed file
+            if header:
+                _ = cov_file.readline()
+            for line in cov_file:
+                yield _line_to_values(
+                    line.decode().strip().split(sep),
+                    c_col,
+                    p_col,
+                    m_col,
+                    u_col,
+                    coverage,
+                )
+    # we add the name of the file which caused the crash so that the user can fix it
+    except Exception as e:
+        raise type(e)(f"{e} (in file: {cov_file.name})").with_traceback(
+            sys.exc_info()[2]
+        )
 
 
 def _write_column_names(output_dir, cell_names, fname="column_header.txt"):
@@ -363,12 +375,13 @@ def _dump_coo_files(fpaths, input_format, n_cells, output_dir):
         c_col, p_col, m_col, u_col, coverage, sep, header = _human_to_computer(
             input_format
         )
-    except:
-        raise Exception(
-            f"Unknown input file format '{input_format}'.\nValid options include "
-            "'bismark', 'allc', 'methylpy' or a custom ':'-separated format "
+    except Exception as e:
+        raise type(e)(
+            f"{e}\n\nUnknown input file format '{input_format}'.\nValid options "
+            "include 'bismark', 'allc', 'methylpy' or a custom ':'-separated format "
             "(check 'scbs prepare --help' for details)."
-        )
+        ).with_traceback(sys.exc_info()[2])
+
     coo_files = {}
     chrom_sizes = {}
     for cell_n, cov_file in enumerate(fpaths):
