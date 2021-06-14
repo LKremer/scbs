@@ -4,7 +4,7 @@ import numpy as np
 import math
 
 
-def score(files, bins, metadata):
+def score_dc_s(files, bins, metadata):
 	metadata = pd.read_csv(metadata, index_col = 0)
 	score_dict = {}
 
@@ -59,16 +59,52 @@ def score(files, bins, metadata):
 	return score_dict
 
 
-def process(score_dict):
+def score_rel_distance(files, bins, metadata):
+	metadata = pd.read_csv(metadata, index_col = 0)
+	score_dict = {}
+	for file in files:
+    #file = mypath+file
+		data = pd.read_csv(file, index_col = 0)
+		data = data.merge(metadata[['Neuron type', 'Sample']] , how = 'left', right_on = metadata['Sample'], left_on = data.index)
+		total_list = []
+		print('Calculating score for file ' + file)
+		pcs = data.iloc[:,41:57]
+		centroids = pcs.groupby('Neuron type').mean()
+		types = centroids.index.unique()
+		Ci_array = np.ones(len(types))
+		for idx1, value1 in enumerate(types):
+			subset = pcs[pcs['Neuron type'] == value1].iloc[:,:-1].to_numpy()
+			cells = len(subset)
+			dist_array = np.zeros(shape = (cells, len(types)))  
+			for idx2, value2 in enumerate(types):
+				centroid = centroids[centroids.index == value2].to_numpy()
+				distances = np.power(np.subtract(subset, centroid), 2)
+				summed_sqrt = np.sqrt(np.sum(distances, axis = 1))
+				dist_array[:,idx2] = summed_sqrt
+			min_distance = np.argmin(dist_array, axis = 1)
+			index = np.argpartition(dist_array, 2, axis = 1)
+			order_array = np.take_along_axis(dist_array,index, axis = 1)
+			false_centroids = np.where(order_array[:,0]!= dist_array[:,idx1])
+			order_array[:,1][false_centroids] = order_array[:,0][false_centroids]
+			total = 1-(dist_array[:,idx1] / (dist_array[:,idx1] + order_array[:,1]))
+			total_list.append(total)    
+		RDS = np.concatenate(total_list, axis=0).sum()/len(data)
+		score_dict[file] = [RDS]
+	return score_dict
+
+def process(score_dict, scoring):
 	print('Scores were calculated & are processed into the end format.')
 	df=pd.DataFrame.from_dict(score_dict,orient='index')
-	df.loc[:,'mean'] = np.mean(df[0].tolist(), axis=1)
-	df.loc[:,'std'] = np.std(df[0].tolist(), axis=1)
-	df.loc[:,'mean_DSC'] = np.mean(df[1].tolist(), axis=1)
-	df.loc[:,'std_DSC'] = np.std(df[1].tolist(), axis=1)
-	df.loc[:,'mean_DC'] = np.mean(df[2].tolist(), axis=1)
-	df.loc[:,'std_DC'] = np.std(df[2].tolist(), axis=1)
-	dft = df.iloc[:,3:]
+	if scoring.lower() == 'dc+s':
+		df.loc[:,'mean'] = np.mean(df[0].tolist(), axis=1)
+		df.loc[:,'std'] = np.std(df[0].tolist(), axis=1)
+		df.loc[:,'mean_DSC'] = np.mean(df[1].tolist(), axis=1)
+		df.loc[:,'std_DSC'] = np.std(df[1].tolist(), axis=1)
+		df.loc[:,'mean_DC'] = np.mean(df[2].tolist(), axis=1)
+		df.loc[:,'std_DC'] = np.std(df[2].tolist(), axis=1)
+		dft = df.iloc[:,3:]
+	else:
+		dft = df
 	regions = []
 	value = []
 	scaling = []
@@ -100,7 +136,7 @@ def process(score_dict):
 	return dft
 
 
-def main(files, bins, save, metadata):
+def main(files, bins, save, metadata, scoring):
     #Bins for DC score
 	print('Started reading in all files.')
 	x_bins = bins
@@ -109,10 +145,15 @@ def main(files, bins, save, metadata):
 	files = [f.name for f in files if f.name.endswith('.csv')]
 	score_dict = {}
 	#Score all files (each file should consist of 20 UMAP scores, so the dictionaty should contain as many scores per file)
-	score_dict = score(files, bins, metadata)
+	if scoring.lower() == 'dc+s':
+		score_dict = score_dc_s(files, bins, metadata)
+	elif scoring.lower() == 'rel':
+		score_dict = score_rel_distance(files, bins, metadata)
+	else:
+		raise Exception("Specify which scoring type should be used. Check --help for possible options.")
 	#print(score_dict)
 	# Assign Dict to condition and calculate mean value for each
-	score_df = process(score_dict)
+	score_df = process(score_dict, scoring)
 	score_df.to_csv(save)
 
 
@@ -121,9 +162,11 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser(
         description='')
     parser.add_argument('-f', '--files', help='Add path to files.', type=argparse.FileType('r'), nargs='+')
-    parser.add_argument('-b', '--bins', help='Number of bin grid should be devided in for DC score', type = int, 
+    parser.add_argument('-b', '--bins', help='Number of bins grid should be devided in for DC score', type = int, 
                         default = 20)
     parser.add_argument('-s', '--save', help='Path & Name of output df')
     parser.add_argument('-m', '--metadata', help='Path to metadata', default='/mnt/o_drive/Leonie_K/20200407_neuro_subtypes/metadata/metadata_format_mouse.csv')
+    parser.add_argument('-sc', '--scoring', help = 'Which scoring type should be used? DC+S Score is the average of DC and DSC scores. \'rel\' refers to the relative distance score.',
+    					choices = ('DC+S', 'rel'), default = 'rel')
     args = parser.parse_args()
     main(**vars(args))
