@@ -119,7 +119,7 @@ def cli():
     coverage (c) followed by either 'm' or 'c', e.g. '4c' to denote that the 4th column
     contains the coverage
     5. The separator, e.g. '\\t' for tsv files or ',' for csv
-    6. Either '0' if the file has a header or '1' if it does not have a header
+    6. Either '1' if the file has a header or '0' if it does not have a header
     All column numbers are 1-indexed, i.e. to define the first column use '1' and not
     '0'.""",
 )
