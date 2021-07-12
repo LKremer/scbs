@@ -136,14 +136,3 @@ def _redefine_bed_regions(start, end, extend_by):
     new_start = center - extend_by  # bounds = center += half region size
     new_end = center + extend_by
     return new_start, new_end
-
-
-def _line_to_values(line, c_col, p_col, m_col, u_col, coverage):
-    chrom = line[c_col]
-    pos = int(line[p_col])
-    n_meth = int(line[m_col])
-    if coverage:
-        n_unmeth = int(line[u_col]) - n_meth
-    else:
-        n_unmeth = int(line[u_col])
-    return chrom, pos, n_meth, n_unmeth
