@@ -59,3 +59,60 @@ def _write_profile(
 
     output_file.write(long_df.to_csv(index=False))
     return
+
+
+def _iter_bed(file_obj, strand_col_i=None, keep_cols=False):
+    is_rev_strand = False
+    other_columns = False
+    if strand_col_i is not None:
+        strand_col_i -= 1  # CLI is 1-indexed
+    for line in file_obj:
+        if line.startswith("#"):
+            continue  # skip comments
+        values = line.strip().split("\t")
+        if strand_col_i is not None:
+            strand_val = values[strand_col_i]
+            if strand_val == "-" or strand_val == "-1":
+                is_rev_strand = True
+            elif strand_val == "+" or strand_val == "1":
+                is_rev_strand = False
+            else:
+                raise Exception(
+                    f"Invalid strand column value '{strand_val}'. "
+                    "Should be '+', '-', '1', or '-1'."
+                )
+        if keep_cols:
+            other_columns = values[3:]
+        # yield chrom, start, end, and whether the feature is on the minus strand
+        yield values[0], int(values[1]), int(values[2]), is_rev_strand, other_columns
+
+
+def _iterate_covfile(cov_file, c_col, p_col, m_col, u_col, coverage, sep, header):
+    try:
+        if cov_file.name.lower().endswith(".gz"):
+            # handle gzip-compressed file
+            lines = gzip.decompress(cov_file.read()).decode().strip().split("\n")
+            if header:
+                lines = lines[1:]
+            for line in lines:
+                yield _line_to_values(
+                    line.strip().split(sep), c_col, p_col, m_col, u_col, coverage
+                )
+        else:
+            # handle uncompressed file
+            if header:
+                _ = cov_file.readline()
+            for line in cov_file:
+                yield _line_to_values(
+                    line.decode().strip().split(sep),
+                    c_col,
+                    p_col,
+                    m_col,
+                    u_col,
+                    coverage,
+                )
+    # we add the name of the file which caused the crash so that the user can fix it
+    except Exception as e:
+        raise type(e)(f"{e} (in file: {cov_file.name})").with_traceback(
+            sys.exc_info()[2]
+        )

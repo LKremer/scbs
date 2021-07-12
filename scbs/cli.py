@@ -7,6 +7,7 @@ from scbs.scbs import _get_filepath, smooth, matrix, scan, echo
 from scbs.utils import echo, secho
 from scbs.prepare import prepare
 from scbs.profile import profile
+from scbs.smooth import smooth
 from click_help_colors import HelpColorsGroup
 
 

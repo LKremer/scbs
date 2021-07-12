@@ -1,7 +1,7 @@
 import numpy as np
 import os
 import scipy.sparse as sp_sparse
-
+from .utils import _iterate_covfile
 
 def prepare(input_files, data_dir, input_format):
     cell_names = _get_cell_names(input_files)
@@ -194,3 +194,18 @@ def _human_to_computer(file_format):
     else:
         raise Exception("Invalid number of ':'-separated values in custom input format")
     return c_col, p_col, m_col, u_col, coverage, sep, header
+
+
+def _write_summary_stats(data_dir, cell_names, n_obs, n_meth):
+    stats_df = pd.DataFrame(
+        {
+            "cell_name": cell_names,
+            "n_obs": n_obs,
+            "n_meth": n_meth,
+            "global_meth_frac": np.divide(n_meth, n_obs),
+        }
+    )
+    out_path = os.path.join(data_dir, "cell_stats.csv")
+    with open(out_path, "w") as outfile:
+        outfile.write(stats_df.to_csv(index=False))
+    return out_path
