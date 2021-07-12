@@ -3,7 +3,9 @@ import click
 import numba
 from click import style
 from datetime import datetime, timedelta
-from scbs.scbs import _get_filepath, profile, prepare, smooth, matrix, scan, echo
+from scbs.scbs import _get_filepath, profile, smooth, matrix, scan, echo
+from scbs.utils import echo, secho
+from scbs.prepare import prepare
 from click_help_colors import HelpColorsGroup
 
 
