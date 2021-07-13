@@ -8,7 +8,6 @@ import pandas as pd
 from numba import njit, prange
 from sklearn.decomposition import PCA
 from sklearn.preprocessing import scale
-from umap import UMAP
 
 from scbs.numerics import _calc_mean_shrunken_residuals
 from scbs.utils import echo, secho
@@ -230,6 +229,7 @@ def reduce(
     Takes the output of 'scbs matrix' and reduces it to fewer dimensions, first by
     PCA and then by UMAP.
     """
+    from umap import UMAP
     if isinstance(matrix, str):
         df = pd.read_csv(matrix, header=0)
     elif isinstance(matrix, pd.core.frame.DataFrame):
