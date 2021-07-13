@@ -110,7 +110,7 @@ def cli():
     'methylpy', 'allc' or custom (see below).
 
     \b
-    You can specify a costum format by specifying the separator, whether the
+    You can specify a custom format by specifying the separator, whether the
     file has a header, and which information is stored in which columns. These
     values should be separated by ':' and enclosed by quotation marks, for
     example --input-format '1:2:3:4m:\\t:1'
