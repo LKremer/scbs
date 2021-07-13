@@ -1,3 +1,13 @@
+import click
+import pandas as pd
+import numpy as np
+import gzip
+import sys
+import os
+import scipy.sparse as sp_sparse
+from statsmodels.stats.proportion import proportion_confint
+
+
 # print messages go to stderr
 # output file goes to stdout (when using "-" as output file)
 # that way you can pipe the output file e.g. into bedtools
@@ -127,3 +137,27 @@ def _line_to_values(line, c_col, p_col, m_col, u_col, coverage):
     else:
         n_unmeth = int(line[u_col])
     return chrom, pos, n_meth, n_unmeth
+
+
+
+def _parse_cell_names(data_dir):
+    cell_names = []
+    with open(os.path.join(data_dir, "column_header.txt"), "r") as col_heads:
+        for line in col_heads:
+            cell_names.append(line.strip())
+    return cell_names
+
+
+def _load_chrom_mat(data_dir, chrom):
+    mat_path = os.path.join(data_dir, f"{chrom}.npz")
+    echo(f"loading chromosome {chrom} from {mat_path} ...")
+    try:
+        mat = sp_sparse.load_npz(mat_path)
+    except FileNotFoundError:
+        secho("Warning: ", fg="red", nl=False)
+        echo(
+            f"Couldn't load methylation data for chromosome {chrom} from {mat_path}. "
+            f"Regions on chromosome {chrom} will not be considered."
+        )
+        mat = None
+    return mat

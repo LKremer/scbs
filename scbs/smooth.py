@@ -1,6 +1,10 @@
 import os
 import scipy.sparse as sp_sparse
 import glob
+import numpy as np
+from .utils import echo, secho
+import numba
+
 
 class Smoother(object):
     def __init__(self, sparse_mat, bandwidth=1000, weigh=False):

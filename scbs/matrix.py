@@ -1,4 +1,6 @@
-from .utils import _iter_bed
+from .utils import _iter_bed, echo, secho, _parse_cell_names, _load_chrom_mat
+from .smooth import _load_smoothed_chrom
+import numpy as np
 
 
 def matrix(

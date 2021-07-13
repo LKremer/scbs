@@ -1,10 +1,6 @@
 import numpy as np
-import scipy.sparse as sp_sparse
-import os
-import sys
-import gzip
-from .utils import _iter_bed
-
+from .utils import (_iter_bed, echo, secho, _load_chrom_mat, _get_filepath,
+                    _parse_cell_names, _write_profile)
 
 def profile(data_dir, regions, output, width, strand_column, label):
     """
@@ -104,28 +100,6 @@ def profile(data_dir, regions, output, width, strand_column, label):
     _write_profile(output, n_meth_global, n_non_na_global, cell_names, extend_by, label)
     return
 
-
-def _parse_cell_names(data_dir):
-    cell_names = []
-    with open(os.path.join(data_dir, "column_header.txt"), "r") as col_heads:
-        for line in col_heads:
-            cell_names.append(line.strip())
-    return cell_names
-
-
-def _load_chrom_mat(data_dir, chrom):
-    mat_path = os.path.join(data_dir, f"{chrom}.npz")
-    echo(f"loading chromosome {chrom} from {mat_path} ...")
-    try:
-        mat = sp_sparse.load_npz(mat_path)
-    except FileNotFoundError:
-        secho("Warning: ", fg="red", nl=False)
-        echo(
-            f"Couldn't load methylation data for chromosome {chrom} from {mat_path}. "
-            f"Regions on chromosome {chrom} will not be considered."
-        )
-        mat = None
-    return mat
 
 
 def _redefine_bed_regions(start, end, extend_by):

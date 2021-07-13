@@ -1,7 +1,10 @@
 import numpy as np
 import os
 import scipy.sparse as sp_sparse
-from .utils import _iterate_covfile
+from .utils import _iterate_covfile, echo, secho
+import sys
+import pandas as pd
+
 
 def prepare(input_files, data_dir, input_format):
     cell_names = _get_cell_names(input_files)
@@ -141,6 +144,7 @@ def _write_column_names(output_dir, cell_names, fname="column_header.txt"):
         for cell_name in cell_names:
             col_head.write(cell_name + "\n")
     return out_path
+
 
 def _human_to_computer(file_format):
     """
