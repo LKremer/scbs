@@ -57,7 +57,7 @@ def prepare(input_files, data_dir, input_format):
 
 def _get_cell_names(cov_files):
     """
-    Use the file base names (without extension) as cell names
+    Use the file base names (without extension) as cell names.
     """
     names = []
     for file_handle in cov_files:
