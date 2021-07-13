@@ -1,19 +1,17 @@
-import os
-import sys
-import gzip
 import glob
-import pandas as pd
-import numpy as np
+import gzip
+import os
+
 import numba
-import scipy.sparse as sp_sparse
-import click
-from statsmodels.stats.proportion import proportion_confint
+import numpy as np
+import pandas as pd
 from numba import njit, prange
 from sklearn.decomposition import PCA
 from sklearn.preprocessing import scale
 from umap import UMAP
-from scbs.utils import echo, secho
 
+from scbs.numerics import _calc_mean_shrunken_residuals
+from scbs.utils import echo, secho
 
 # ignore division by 0 and division by NaN error
 np.seterr(divide="ignore", invalid="ignore")

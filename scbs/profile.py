@@ -2,6 +2,7 @@ import numpy as np
 from .utils import (_iter_bed, echo, secho, _load_chrom_mat, _get_filepath,
                     _parse_cell_names, _write_profile)
 
+
 def profile(data_dir, regions, output, width, strand_column, label):
     """
     see 'scbs profile --help'
