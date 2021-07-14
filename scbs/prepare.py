@@ -147,57 +147,10 @@ def _write_column_names(output_dir, cell_names, fname="column_header.txt"):
 
 
 def _human_to_computer(file_format):
-    """
-    Converts the human-readable input file format to a tuple
-    """
-
-    file_format = file_format.lower().split(":")
-    if len(file_format) == 1:
-        if file_format[0] in ("bismarck", "bismark"):
-            c_col, p_col, m_col, u_col, coverage, sep, header = (
-                0,
-                1,
-                4,
-                5,
-                False,
-                "\t",
-                False,
-            )
-        elif file_format[0] in ("allc", "methylpy"):
-            c_col, p_col, m_col, u_col, coverage, sep, header = (
-                0,
-                1,
-                4,
-                5,
-                True,
-                "\t",
-                True,
-            )
-        else:
-            raise Exception(f"{file_format[0]} is not a known format")
-    elif len(file_format) == 6:
-        c_col = int(file_format[0]) - 1
-        p_col = int(file_format[1]) - 1
-        m_col = int(file_format[2]) - 1
-        u_col = int(file_format[3][0:-1]) - 1
-        info = file_format[3][-1]
-        if info == "c":
-            coverage = True
-        elif info == "m":
-            coverage = False
-        else:
-            raise Exception(
-                "The 4th column of a custom input format must contain an integer and "
-                "either 'c' for coverage or 'm' for methylation (e.g. '4c'), but you "
-                f"provided '{file_format[3]}'."
-            )
-        sep = str(file_format[4])
-        if sep == "\\t":
-            sep = "\t"
-        header = bool(int(file_format[5]))
-    else:
-        raise Exception("Invalid number of ':'-separated values in custom input format")
-    return c_col, p_col, m_col, u_col, coverage, sep, header
+    """Convert the human-readable input file format to a tuple."""
+    if ":" in file_format:
+        return create_custom_format(file_format).totuple()
+    return create_standard_format(file_format).totuple()
 
 
 def _write_summary_stats(data_dir, cell_names, n_obs, n_meth):
@@ -213,3 +166,58 @@ def _write_summary_stats(data_dir, cell_names, n_obs, n_meth):
     with open(out_path, "w") as outfile:
         outfile.write(stats_df.to_csv(index=False))
     return out_path
+
+
+class CoverageFormat():
+    """Describes the columns in the coverage file."""
+
+    def __init__(self, chr, pos, meth, umeth, coverage, sep, header):
+        self.chr = chr
+        self.pos = pos
+        self.meth = meth
+        self.umeth = umeth
+        self.cov = coverage
+        self.sep = sep
+        self.header = header
+
+    def totuple(self):
+        """Transform to use it in non-refactored code for now."""
+        return (self.chr, self.pos, self.meth, self.umeth, self.cov,
+                self.sep, self.header)
+
+
+def create_custom_format(format_string):
+    """Create from user specified string."""
+    format_string = format_string.lower().split(":")
+    if len(format_string) != 6:
+        raise Exception("Invalid number of ':'-separated values in custom input format")
+    chr = int(format_string[0]) - 1
+    pos = int(format_string[1]) - 1
+    meth = int(format_string[2]) - 1
+    umeth = int(format_string[3][0:-1]) - 1
+    info = format_string[3][-1]
+    if info == "c":
+        coverage = True
+    elif info == "m":
+        coverage = False
+    else:
+        raise Exception(
+            "The 4th column of a custom input format must contain an integer and "
+            "either 'c' for coverage or 'm' for methylation (e.g. '4c'), but you "
+            f"provided '{format_string[3]}'."
+        )
+    sep = str(format_string[4])
+    if sep == "\\t":
+        sep = "\t"
+    header = bool(int(format_string[5]))
+    return CoverageFormat(chr, pos, meth, umeth, coverage, sep, header)
+
+
+def create_standard_format(format_name):
+    """Create a format object on the basis of the format name."""
+    if format_name in ("bismarck", "bismark"):
+        return CoverageFormat(0, 1, 4, 5, False, "\t", False,)
+    elif format_name in ("allc", "methylpy"):
+        CoverageFormat(0, 1, 4, 5, True, "\t", True,)
+    else:
+        raise Exception(f"{format_name} is not a known format")
