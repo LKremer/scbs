@@ -169,8 +169,8 @@ def _write_summary_stats(data_dir, cell_names, n_obs, n_meth):
 class CoverageFormat():
     """Describes the columns in the coverage file."""
 
-    def __init__(self, chr, pos, meth, umeth, coverage, sep, header):
-        self.chr = chr
+    def __init__(self, chrom, pos, meth, umeth, coverage, sep, header):
+        self.chrom = chrom
         self.pos = pos
         self.meth = meth
         self.umeth = umeth
@@ -180,7 +180,7 @@ class CoverageFormat():
 
     def totuple(self):
         """Transform to use it in non-refactored code for now."""
-        return (self.chr, self.pos, self.meth, self.umeth, self.cov,
+        return (self.chrom, self.pos, self.meth, self.umeth, self.cov,
                 self.sep, self.header)
 
 
@@ -189,7 +189,7 @@ def create_custom_format(format_string):
     format_string = format_string.lower().split(":")
     if len(format_string) != 6:
         raise Exception("Invalid number of ':'-separated values in custom input format")
-    chr = int(format_string[0]) - 1
+    chrom = int(format_string[0]) - 1
     pos = int(format_string[1]) - 1
     meth = int(format_string[2]) - 1
     info = format_string[3][-1]
@@ -208,7 +208,7 @@ def create_custom_format(format_string):
     if sep == "\\t":
         sep = "\t"
     header = bool(int(format_string[5]))
-    return CoverageFormat(chr, pos, meth, umeth, coverage, sep, header)
+    return CoverageFormat(chrom, pos, meth, umeth, coverage, sep, header)
 
 
 def create_standard_format(format_name):
