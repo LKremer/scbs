@@ -216,7 +216,7 @@ def create_standard_format(format_name):
     if format_name in ("bismarck", "bismark"):
         return CoverageFormat(0, 1, 4, 5, False, "\t", False,)
     elif format_name in ("allc", "methylpy"):
-        CoverageFormat(0, 1, 4, 5, True, "\t", True,)
+        return CoverageFormat(0, 1, 4, 5, True, "\t", True,)
     else:
         raise Exception(f"{format_name} is not a known format")
 
