@@ -1,7 +1,8 @@
 import numpy as np
+import gzip
 import os
 import scipy.sparse as sp_sparse
-from .utils import _iterate_covfile, echo, secho
+from .utils import echo, secho
 import sys
 import pandas as pd
 
@@ -221,3 +222,46 @@ def create_standard_format(format_name):
         CoverageFormat(0, 1, 4, 5, True, "\t", True,)
     else:
         raise Exception(f"{format_name} is not a known format")
+
+
+def _iterate_covfile(cov_file, c_col, p_col, m_col, u_col, coverage, sep, header):
+    try:
+        if cov_file.name.lower().endswith(".gz"):
+            # handle gzip-compressed file
+            lines = gzip.decompress(cov_file.read()).decode().strip().split("\n")
+            if header:
+                lines = lines[1:]
+            for line in lines:
+                yield _line_to_values(
+                    line.strip().split(sep), c_col, p_col, m_col, u_col, coverage
+                )
+        else:
+            # handle uncompressed file
+            if header:
+                _ = cov_file.readline()
+            for line in cov_file:
+                yield _line_to_values(
+                    line.decode().strip().split(sep),
+                    c_col,
+                    p_col,
+                    m_col,
+                    u_col,
+                    coverage,
+                )
+    # we add the name of the file which caused the crash so that the user can fix it
+    except Exception as e:
+        raise type(e)(f"{e} (in file: {cov_file.name})").with_traceback(
+            sys.exc_info()[2]
+        )
+
+
+def _line_to_values(line, c_col, p_col, m_col, u_col, coverage):
+    chrom = line[c_col]
+    pos = int(line[p_col])
+    n_meth = int(line[m_col])
+    if coverage:
+        n_unmeth = int(line[u_col]) - n_meth
+    else:
+        n_unmeth = int(line[u_col])
+    return chrom, pos, n_meth, n_unmeth
+
