@@ -194,7 +194,6 @@ def create_custom_format(format_string):
     chr = int(format_string[0]) - 1
     pos = int(format_string[1]) - 1
     meth = int(format_string[2]) - 1
-    umeth = int(format_string[3][0:-1]) - 1
     info = format_string[3][-1]
     if info == "c":
         coverage = True
@@ -206,6 +205,7 @@ def create_custom_format(format_string):
             "either 'c' for coverage or 'm' for methylation (e.g. '4c'), but you "
             f"provided '{format_string[3]}'."
         )
+    umeth = int(format_string[3][0:-1]) - 1
     sep = str(format_string[4])
     if sep == "\\t":
         sep = "\t"
