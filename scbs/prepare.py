@@ -125,7 +125,7 @@ def _load_csc_from_coo(coo_path, chrom_size, n_cells):
             shape=(chrom_size + 1, n_cells),
             dtype=np.int8,
         )
-        echo("Converting from COO to CSR...")
+        echo("Converting from COO to CSC...")
         mat = mat.tocsc()
     except Exception as e:
         raise type(e)(f"{e} (problematic file: {coo_path})").with_traceback(
