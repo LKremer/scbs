@@ -35,7 +35,7 @@ def prepare(input_files, data_dir, input_format):
         # populate with values from temporary COO file
         coo_path = os.path.join(data_dir, f"{chrom}.coo")
         mat_path = os.path.join(data_dir, f"{chrom}.npz")
-        mat = _load_csr_from_coo(coo_path, chrom_size, n_cells)
+        mat = _load_csc_from_coo(coo_path, chrom_size, n_cells)
         n_obs_cell += mat.getnnz(axis=0)
         n_meth_cell += np.ravel(np.sum(mat > 0, axis=0))
 
@@ -117,7 +117,7 @@ def _dump_coo_files(fpaths, input_format, n_cells, output_dir):
     return coo_files, chrom_sizes
 
 
-def _load_csr_from_coo(coo_path, chrom_size, n_cells):
+def _load_csc_from_coo(coo_path, chrom_size, n_cells):
     try:
         coo = np.loadtxt(coo_path, delimiter=",", ndmin=2)
         mat = sp_sparse.coo_matrix(
@@ -126,7 +126,7 @@ def _load_csr_from_coo(coo_path, chrom_size, n_cells):
             dtype=np.int8,
         )
         echo("Converting from COO to CSR...")
-        mat = mat.tocsr()  # convert from COO to CSR format
+        mat = mat.tocsc()
     except Exception as e:
         raise type(e)(f"{e} (problematic file: {coo_path})").with_traceback(
             sys.exc_info()[2]
