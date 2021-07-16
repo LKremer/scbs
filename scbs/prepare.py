@@ -117,7 +117,7 @@ def _dump_coo_files(fpaths, input_format, n_cells, output_dir):
 
 def _load_csr_from_coo(coo_path, chrom_size, n_cells):
     try:
-        coo = np.loadtxt(coo_path, delimiter=",", ndmin=2)
+        coo = pd.read_csv(coo_path, delimiter=",").values
         mat = sp_sparse.coo_matrix(
             (coo[:, 2], (coo[:, 0], coo[:, 1])),
             shape=(chrom_size + 1, n_cells),
