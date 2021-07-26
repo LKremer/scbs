@@ -1,7 +1,8 @@
 import numpy as np
+import gzip
 import os
 import scipy.sparse as sp_sparse
-from .utils import _iterate_covfile, echo, secho
+from .utils import echo, secho
 import sys
 import pandas as pd
 
@@ -56,18 +57,15 @@ def prepare(input_files, data_dir, input_format):
 
 
 def _get_cell_names(cov_files):
-    """
-    Use the file base names (without extension) as cell names
-    """
+    """Use the file base names (without extension) as cell names."""
     names = []
     for file_handle in cov_files:
-        f = file_handle.name
+        f = os.path.basename(file_handle.name)
         if f.lower().endswith(".gz"):
-            # remove .xxx.gz
-            names.append(os.path.splitext(os.path.splitext(os.path.basename(f))[0])[0])
-        else:
-            # remove .xxx
-            names.append(os.path.splitext(os.path.basename(f))[0])
+            # remove .gz
+            f = f[:-3]
+        # remove .xxx
+        names.append(os.path.splitext(f)[0])
     if len(set(names)) < len(names):
         s = (
             "\n".join(names) + "\nThese sample names are not unique, "
@@ -147,57 +145,10 @@ def _write_column_names(output_dir, cell_names, fname="column_header.txt"):
 
 
 def _human_to_computer(file_format):
-    """
-    Converts the human-readable input file format to a tuple
-    """
-
-    file_format = file_format.lower().split(":")
-    if len(file_format) == 1:
-        if file_format[0] in ("bismarck", "bismark"):
-            c_col, p_col, m_col, u_col, coverage, sep, header = (
-                0,
-                1,
-                4,
-                5,
-                False,
-                "\t",
-                False,
-            )
-        elif file_format[0] in ("allc", "methylpy"):
-            c_col, p_col, m_col, u_col, coverage, sep, header = (
-                0,
-                1,
-                4,
-                5,
-                True,
-                "\t",
-                True,
-            )
-        else:
-            raise Exception(f"{file_format[0]} is not a known format")
-    elif len(file_format) == 6:
-        c_col = int(file_format[0]) - 1
-        p_col = int(file_format[1]) - 1
-        m_col = int(file_format[2]) - 1
-        u_col = int(file_format[3][0:-1]) - 1
-        info = file_format[3][-1]
-        if info == "c":
-            coverage = True
-        elif info == "m":
-            coverage = False
-        else:
-            raise Exception(
-                "The 4th column of a custom input format must contain an integer and "
-                "either 'c' for coverage or 'm' for methylation (e.g. '4c'), but you "
-                f"provided '{file_format[3]}'."
-            )
-        sep = str(file_format[4])
-        if sep == "\\t":
-            sep = "\t"
-        header = bool(int(file_format[5]))
-    else:
-        raise Exception("Invalid number of ':'-separated values in custom input format")
-    return c_col, p_col, m_col, u_col, coverage, sep, header
+    """Convert the human-readable input file format to a tuple."""
+    if ":" in file_format:
+        return create_custom_format(file_format).totuple()
+    return create_standard_format(file_format).totuple()
 
 
 def _write_summary_stats(data_dir, cell_names, n_obs, n_meth):
@@ -213,3 +164,101 @@ def _write_summary_stats(data_dir, cell_names, n_obs, n_meth):
     with open(out_path, "w") as outfile:
         outfile.write(stats_df.to_csv(index=False))
     return out_path
+
+
+class CoverageFormat():
+    """Describes the columns in the coverage file."""
+
+    def __init__(self, chrom, pos, meth, umeth, coverage, sep, header):
+        self.chrom = chrom
+        self.pos = pos
+        self.meth = meth
+        self.umeth = umeth
+        self.cov = coverage
+        self.sep = sep
+        self.header = header
+
+    def totuple(self):
+        """Transform to use it in non-refactored code for now."""
+        return (self.chrom, self.pos, self.meth, self.umeth, self.cov,
+                self.sep, self.header)
+
+
+def create_custom_format(format_string):
+    """Create from user specified string."""
+    format_string = format_string.lower().split(":")
+    if len(format_string) != 6:
+        raise Exception("Invalid number of ':'-separated values in custom input format")
+    chrom = int(format_string[0]) - 1
+    pos = int(format_string[1]) - 1
+    meth = int(format_string[2]) - 1
+    info = format_string[3][-1]
+    if info == "c":
+        coverage = True
+    elif info == "m":
+        coverage = False
+    else:
+        raise Exception(
+            "The 4th column of a custom input format must contain an integer and "
+            "either 'c' for coverage or 'm' for methylation (e.g. '4c'), but you "
+            f"provided '{format_string[3]}'."
+        )
+    umeth = int(format_string[3][0:-1]) - 1
+    sep = str(format_string[4])
+    if sep == "\\t":
+        sep = "\t"
+    header = bool(int(format_string[5]))
+    return CoverageFormat(chrom, pos, meth, umeth, coverage, sep, header)
+
+
+def create_standard_format(format_name):
+    """Create a format object on the basis of the format name."""
+    if format_name in ("bismarck", "bismark"):
+        return CoverageFormat(0, 1, 4, 5, False, "\t", False,)
+    elif format_name in ("allc", "methylpy"):
+        return CoverageFormat(0, 1, 4, 5, True, "\t", True,)
+    else:
+        raise Exception(f"{format_name} is not a known format")
+
+
+def _iterate_covfile(cov_file, c_col, p_col, m_col, u_col, coverage, sep, header):
+    try:
+        if cov_file.name.lower().endswith(".gz"):
+            # handle gzip-compressed file
+            lines = gzip.decompress(cov_file.read()).decode().strip().split("\n")
+            if header:
+                lines = lines[1:]
+            for line in lines:
+                yield _line_to_values(
+                    line.strip().split(sep), c_col, p_col, m_col, u_col, coverage
+                )
+        else:
+            # handle uncompressed file
+            if header:
+                _ = cov_file.readline()
+            for line in cov_file:
+                yield _line_to_values(
+                    line.decode().strip().split(sep),
+                    c_col,
+                    p_col,
+                    m_col,
+                    u_col,
+                    coverage,
+                )
+    # we add the name of the file which caused the crash so that the user can fix it
+    except Exception as e:
+        raise type(e)(f"{e} (in file: {cov_file.name})").with_traceback(
+            sys.exc_info()[2]
+        )
+
+
+def _line_to_values(line, c_col, p_col, m_col, u_col, coverage):
+    chrom = line[c_col]
+    pos = int(line[p_col])
+    n_meth = int(line[m_col])
+    if coverage:
+        n_unmeth = int(line[u_col]) - n_meth
+    else:
+        n_unmeth = int(line[u_col])
+    return chrom, pos, n_meth, n_unmeth
+

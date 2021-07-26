@@ -110,7 +110,7 @@ def cli():
     'methylpy', 'allc' or custom (see below).
 
     \b
-    You can specify a costum format by specifying the separator, whether the
+    You can specify a custom format by specifying the separator, whether the
     file has a header, and which information is stored in which columns. These
     values should be separated by ':' and enclosed by quotation marks, for
     example --input-format '1:2:3:4m:\\t:1'
@@ -120,7 +120,7 @@ def cli():
     1. The column number that contains the chromosome name
     2. The column number that contains the genomic position
     3. The column number that contains the methylated counts
-    4. The column number that contains either unmethylated counts (m) or the total
+    4. The column number that contains either unmethylated counts (u) or the total
     coverage (c) followed by either 'm' or 'c', e.g. '4c' to denote that the 4th column
     contains the coverage
     5. The separator, e.g. '\\t' for tsv files or ',' for csv
