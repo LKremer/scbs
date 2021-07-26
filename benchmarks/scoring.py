@@ -100,6 +100,7 @@ def nearest_neighbor_count(files, bins, metadata, cutoff, k):
 		PCs.append(str('PC' + str(i+1)))
 	score_dict = {}
 	for file in files:
+		print('Calculating score for file ' + file)
 		percentage_count_list = []
 		data = pd.read_csv(file, index_col = 0) # read in data
     
