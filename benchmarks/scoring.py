@@ -2,7 +2,7 @@ import argparse
 import pandas as pd
 import numpy as np
 import math
-
+import umap
 
 def score_dc_s(files, bins, metadata):
 	metadata = pd.read_csv(metadata, index_col = 0)
@@ -92,6 +92,42 @@ def score_rel_distance(files, bins, metadata):
 		score_dict[file] = [RDS]
 	return score_dict
 
+def nearest_neighbor_count(files, bins, metadata, cutoff, k):
+	metadata = pd.read_csv(metadata, index_col = 0)
+	# for easier subsetting: create list with PC1 - PC15 (column names of dataframe)
+	PCs = []
+	for i in range(15):
+		PCs.append(str('PC' + str(i+1)))
+	score_dict = {}
+	for file in files:
+		percentage_count_list = []
+		data = pd.read_csv(file, index_col = 0) # read in data
+    
+		# merge data with metadata information about neuron types
+		data = data.merge(metadata[['Neuron type', 'Sample']] , how = 'left', right_on = metadata['Sample'], left_on = data.index)
+		types = data['Neuron type'].unique() #list of Neuron types 
+		# calculate the nearest neighbor information from the PC coordinates (15-dimensional)
+		nearest_neighbors = umap.umap_.nearest_neighbors(data[PCs], k+1, metric = 'euclidean', metric_kwds = [], angular = False, random_state = None)
+		#take our first entry as first entry is always own cell
+		indices = nearest_neighbors[0][:,1:]
+		distances = nearest_neighbors[1][:,1:]
+
+		for type in types:
+			# Get list of indices from dataset that all have same Neuron type
+			all_type_indices = data.index[data['Neuron type'] == type].tolist()
+			# Get subset of nearest neighbor indices that all have same Neuron type
+			neighbor_type_indices = indices[all_type_indices]
+			# Count per cell how many of the nearest neighbors are from own type (=in all_type_indices list) and devide by k (nr. of nearest neighbors)
+			percentage = np.divide(np.isin(neighbor_type_indices, all_type_indices).sum(axis = 1),k)
+			# count cells that have >= the percentage cutoff of nearest neighbors in their own class
+			percentage_count = sum(percentage >= cutoff)
+		
+			percentage_count_list.append(percentage_count)
+		relative_percentage_count = np.hstack((percentage_count_list)).sum()/len(data)
+		score_dict[file] = relative_percentage_count
+	return score_dict
+
+
 def process(score_dict, scoring):
 	print('Scores were calculated & are processed into the end format.')
 	df=pd.DataFrame.from_dict(score_dict,orient='index')
@@ -136,7 +172,7 @@ def process(score_dict, scoring):
 	return dft
 
 
-def main(files, bins, save, metadata, scoring):
+def main(files, bins, save, metadata, scoring, k, cutoff):
     #Bins for DC score
 	print('Started reading in all files.')
 	x_bins = bins
@@ -149,6 +185,8 @@ def main(files, bins, save, metadata, scoring):
 		score_dict = score_dc_s(files, bins, metadata)
 	elif scoring.lower() == 'rel':
 		score_dict = score_rel_distance(files, bins, metadata)
+	elif scoring.lower() == 'nnc':
+		score_dict = nearest_neighbor_count(files, bins, metadata, cutoff, k)
 	else:
 		raise Exception("Specify which scoring type should be used. Check --help for possible options.")
 	#print(score_dict)
@@ -166,7 +204,9 @@ if __name__ == '__main__':
                         default = 20)
     parser.add_argument('-s', '--save', help='Path & Name of output df')
     parser.add_argument('-m', '--metadata', help='Path to metadata', default='/mnt/o_drive/Leonie_K/20200407_neuro_subtypes/metadata/metadata_format_mouse.csv')
-    parser.add_argument('-sc', '--scoring', help = 'Which scoring type should be used? DC+S Score is the average of DC and DSC scores. \'rel\' refers to the relative distance score.',
-    					choices = ('DC+S', 'rel'), default = 'rel')
+    parser.add_argument('-sc', '--scoring', help = 'Which scoring type should be used? DC+S Score is the average of DC and DSC scores. \'rel\' refers to the relative distance score. \'nnc\' refers to the nearest neighbor count score.',
+    					choices = ('DC+S', 'rel', 'nnc'), default = 'rel')
+    parser.add_argument('-k', '--k', help='Nr of neatest neighbors for nearest neighbor count score', type = int, default = 20)
+    parser.add_argument('-c', '--cutoff', help='Cutoff for percentage cutoff for nearest neighbors score', type = float, default = 0.9)	
     args = parser.parse_args()
     main(**vars(args))
