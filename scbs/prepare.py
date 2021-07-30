@@ -31,18 +31,18 @@ def prepare(input_files, data_dir, input_format):
     )
 
     # read each COO file and convert the matrix to CSR format.
-    for chrom in coo_files.keys():
-        # create empty matrix
-        chrom_size = chrom_sizes[chrom]
-        echo(f"Populating {chrom_size} x {n_cells} matrix for chromosome {chrom}...")
-        # populate with values from temporary COO file
-        coo_path = os.path.join(data_dir, f"{chrom}.coo")
-        mat = _load_csr_from_coo(coo_path, chrom_size, n_cells)
-        n_obs_cell += mat.getnnz(axis=0)
-        n_meth_cell += np.ravel(np.sum(mat > 0, axis=0))
+    with h5py.File(os.path.join(data_dir, "methyl.hdf5"), "a") as hfile:
+        for chrom in coo_files.keys():
+            # create empty matrix
+            chrom_size = chrom_sizes[chrom]
+            echo(f"Populating {chrom_size} x {n_cells} matrix for chromosome {chrom}...")
+            # populate with values from temporary COO file
+            coo_path = os.path.join(data_dir, f"{chrom}.coo")
+            mat = _load_csr_from_coo(coo_path, chrom_size, n_cells)
+            n_obs_cell += mat.getnnz(axis=0)
+            n_meth_cell += np.ravel(np.sum(mat > 0, axis=0))
 
-        echo(f"Writing  {chrom} ...")
-        with h5py.File(os.path.join(data_dir, "methyl.hdf5"), "a") as hfile:
+            echo(f"Writing  {chrom} ...")
             h5object = hfile.create_group(chrom)
             write_sparse_hdf5(h5object, mat.tocsc())
 
