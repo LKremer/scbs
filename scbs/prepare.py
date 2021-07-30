@@ -1,10 +1,12 @@
 import numpy as np
+import h5py
 import gzip
 import os
 import scipy.sparse as sp_sparse
 from .utils import echo, secho
 import sys
 import pandas as pd
+from scbs.io import write_sparse_hdf5
 
 
 def prepare(input_files, data_dir, input_format):
@@ -35,13 +37,15 @@ def prepare(input_files, data_dir, input_format):
         echo(f"Populating {chrom_size} x {n_cells} matrix for chromosome {chrom}...")
         # populate with values from temporary COO file
         coo_path = os.path.join(data_dir, f"{chrom}.coo")
-        mat_path = os.path.join(data_dir, f"{chrom}.npz")
         mat = _load_csr_from_coo(coo_path, chrom_size, n_cells)
         n_obs_cell += mat.getnnz(axis=0)
         n_meth_cell += np.ravel(np.sum(mat > 0, axis=0))
 
-        echo(f"Writing to {mat_path} ...")
-        sp_sparse.save_npz(mat_path, mat)
+        echo(f"Writing  {chrom} ...")
+        with h5py.File(os.path.join(data_dir, "methyl.hdf5"), "a") as hfile:
+            h5object = hfile.create_group(chrom)
+            write_sparse_hdf5(h5object, mat.tocsc())
+
         os.remove(coo_path)  # delete temporary .coo file
 
     colname_path = _write_column_names(data_dir, cell_names)
