@@ -37,3 +37,8 @@ def iterate_chromosomes(h5object: h5py.AttributeManager):
     groups = h5object.keys()
     for g in groups:
         yield g, read_sparse_hdf5(h5object[g])
+
+
+def read_chromosome(filename, chrom):
+    with h5py.File(filename) as h5object:
+        return read_sparse_hdf5(h5object[chrom])

@@ -1,4 +1,9 @@
-from scbs.io import write_sparse_hdf5, read_sparse_hdf5, iterate_chromosomes
+from scbs.io import (
+    write_sparse_hdf5,
+    read_sparse_hdf5,
+    iterate_chromosomes,
+    read_chromosome,
+)
 import scipy.sparse as sparse
 import pytest
 import h5py
@@ -36,3 +41,16 @@ def test_iterate_chromosomes(matrices, tmpdir):
             assert str(i) == test_i
             assert m.format == test_m.format
             assert (m != test_m).nnz == 0
+
+
+def test_read_chromosomes(matrices, tmpdir):
+    p = tmpdir
+    hfile = p / "test.hdf5"
+    with h5py.File(hfile, "w") as h5object:
+        for i, m in enumerate(matrices):
+            group = h5object.create_group(str(i))
+            write_sparse_hdf5(group, m)
+    for i, m in enumerate(matrices):
+        test_m = read_chromosome(hfile, str(i))
+        assert m.format == test_m.format
+        assert (m != test_m).nnz == 0
