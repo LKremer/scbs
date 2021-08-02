@@ -31,6 +31,7 @@ def prepare(input_files, data_dir, input_format):
     )
 
     # read each COO file and convert the matrix to CSR format.
+    # Write the matrices to the corresponding groups in the hdf5 file.
     with h5py.File(os.path.join(data_dir, "methyl.hdf5"), "a") as hfile:
         for chrom in coo_files.keys():
             # create empty matrix
@@ -46,7 +47,7 @@ def prepare(input_files, data_dir, input_format):
             h5object = hfile.create_group(chrom)
             write_sparse_hdf5(h5object, mat.tocsc())
 
-        os.remove(coo_path)  # delete temporary .coo file
+            os.remove(coo_path)  # delete temporary .coo file
 
     colname_path = _write_column_names(data_dir, cell_names)
     echo(f"\nWrote matrix column names to {colname_path}")
