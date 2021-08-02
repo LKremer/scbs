@@ -32,7 +32,7 @@ def prepare(input_files, data_dir, input_format):
 
     # read each COO file and convert the matrix to CSR format.
     # Write the matrices to the corresponding groups in the hdf5 file.
-    with h5py.File(os.path.join(data_dir, "methyl.hdf5"), "a") as hfile:
+    with h5py.File(os.path.join(data_dir, "methyl.hdf5"), "w") as hfile:
         for chrom in coo_files.keys():
             # create empty matrix
             chrom_size = chrom_sizes[chrom]
