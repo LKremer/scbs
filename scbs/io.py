@@ -30,3 +30,10 @@ def read_sparse_hdf5(h5object: h5py.AttributeManager):
             """There must be provided three arrays for the compressed format: \
             'data', 'indices' and 'indptr'."""
         )
+
+
+def iterate_chromosomes(h5object: h5py.AttributeManager):
+    """Read the matrices saved in the groups and return them."""
+    groups = h5object.keys()
+    for g in groups:
+        yield g, read_sparse_hdf5(h5object[g])
