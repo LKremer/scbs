@@ -4,6 +4,7 @@ import glob
 import numpy as np
 from .utils import echo, secho
 import numba
+from scbs.io import iterate_file_chromosome
 
 
 class Smoother(object):
@@ -46,10 +47,9 @@ class Smoother(object):
 def smooth(data_dir, bandwidth, use_weights):
     out_dir = os.path.join(data_dir, "smoothed")
     os.makedirs(out_dir, exist_ok=True)
-    for mat_path in sorted(glob.glob(os.path.join(data_dir, "*.npz"))):
-        chrom = os.path.basename(os.path.splitext(mat_path)[0])
-        echo(f"Reading chromosome {chrom} data from {mat_path} ...")
-        mat = sp_sparse.load_npz(mat_path)
+    filename = os.path.join(data_dir, "scbs.hdf5")
+    for chrom, mat in iterate_file_chromosome(filename):
+        echo(f"Reading chromosome {chrom} data from  {filename}...")
         sm = Smoother(mat, bandwidth, use_weights)
         echo(f"Smoothing chromosome {chrom} ...")
         smoothed_chrom = sm.smooth_whole_chrom()
