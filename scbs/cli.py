@@ -1,15 +1,17 @@
-import scbs
+from datetime import datetime, timedelta
+
 import click
 import numba
 from click import style
-from datetime import datetime, timedelta
-from scbs.scbs import scan, echo
-from .utils import _get_filepath
+from click_help_colors import HelpColorsGroup
+
+import scbs
+from scbs.matrix import matrix
 from scbs.prepare import prepare
 from scbs.profile import profile
+from scbs.scan import scan
 from scbs.smooth import smooth
-from scbs.matrix import matrix
-from click_help_colors import HelpColorsGroup
+from scbs.utils import echo, _get_filepath
 
 
 class Timer(object):
