@@ -3,8 +3,8 @@ import click
 import numba
 from click import style
 from datetime import datetime, timedelta
-from scbs.scbs import scan, echo
-from .utils import _get_filepath
+from .utils import _get_filepath, echo
+from scbs.scan import scan
 from scbs.prepare import prepare
 from scbs.profile import profile
 from scbs.smooth import smooth
