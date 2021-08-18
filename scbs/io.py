@@ -2,7 +2,7 @@ import h5py
 import scipy.sparse as sparse
 
 
-def write_sparse_hdf5(h5object: h5py.AttributeManager, matrix):
+def write_sparse_hdf5(h5object, matrix):
     h5object["indptr"] = matrix.indptr
     h5object["data"] = matrix.data
     h5object["indices"] = matrix.indices
@@ -10,7 +10,7 @@ def write_sparse_hdf5(h5object: h5py.AttributeManager, matrix):
     h5object["shape"] = matrix.shape
 
 
-def read_sparse_hdf5(h5object: h5py.AttributeManager):
+def read_sparse_hdf5(h5object):
     """Read the matrix from the provided h5py File or Group."""
     try:
         constructor = {"csc": sparse.csc_matrix, "csr": sparse.csr_matrix}[
@@ -32,7 +32,7 @@ def read_sparse_hdf5(h5object: h5py.AttributeManager):
         )
 
 
-def iterate_chromosomes(h5object: h5py.AttributeManager):
+def iterate_chromosomes(h5object):
     """Read the matrices saved in the groups and return them."""
     groups = h5object.keys()
     for g in groups:
