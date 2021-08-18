@@ -6,11 +6,11 @@ import numba
 import numpy as np
 import pandas as pd
 from numba import njit, prange
-from sklearn.decomposition import PCA
-from sklearn.preprocessing import scale
 
-from scbs.numerics import _calc_mean_shrunken_residuals
-from scbs.utils import echo, secho
+from .numerics import _calc_mean_shrunken_residuals
+from .utils import echo, secho, _load_chrom_mat
+from .smooth import _load_smoothed_chrom
+
 
 # ignore division by 0 and division by NaN error
 np.seterr(divide="ignore", invalid="ignore")
@@ -230,6 +230,8 @@ def reduce(
     PCA and then by UMAP.
     """
     from umap import UMAP
+    from sklearn.decomposition import PCA
+    from sklearn.preprocessing import scale
     if isinstance(matrix, str):
         df = pd.read_csv(matrix, header=0)
     elif isinstance(matrix, pd.core.frame.DataFrame):
