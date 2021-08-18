@@ -3,10 +3,12 @@ from scbs.io import (
     read_sparse_hdf5,
     iterate_chromosomes,
     read_chromosome,
+    write_sparse_hdf5_stream,
 )
 import scipy.sparse as sparse
 import pytest
 import h5py
+import numpy as np
 
 
 @pytest.fixture
@@ -54,3 +56,40 @@ def test_read_chromosomes(matrices, tmpdir):
         test_m = read_chromosome(hfile, str(i))
         assert m.format == test_m.format
         assert (m != test_m).nnz == 0
+
+
+def iter_coo(x):
+    for i in range(x.shape[0]):
+        for j in range(x.shape[1]):
+            if x[i, j]:
+                yield i, j, x[i, j]
+
+
+def swap_row_col(coo_stream):
+    for i, j, v in coo_stream:
+        yield j, i, v
+
+
+sparse_mats = [
+    sparse.csr_matrix([[1, 0, 0], [0, 2, 0], [0, 0, 3]]),
+    sparse.csr_matrix([[1, 1, 0], [2, 2, 0], [0, 3, 3]]),
+]
+
+
+@pytest.mark.parametrize("matrix", sparse_mats)
+def test_stream_write_CSR(matrix, tmpdir):
+    p = tmpdir
+    hfile = p / "test.hdf5"
+    with h5py.File(hfile, "w") as h5object:
+        coo_stream = iter_coo(matrix)
+        row_num, col_num = matrix.shape
+        nnz = matrix.getnnz()
+        write_sparse_hdf5_stream(h5object, coo_stream, row_num, col_num, nnz)
+        data, indices, indptr = (
+            np.array(h5object["data"]),
+            np.array(h5object["indices"]),
+            np.array(h5object["indptr"]),
+        )
+        np.testing.assert_equal(matrix.data, data)
+        np.testing.assert_equal(matrix.indices, indices)
+        np.testing.assert_equal(matrix.indptr, indptr)

@@ -47,3 +47,35 @@ def read_chromosome(filename, chrom):
 def iterate_file_chromosome(filename):
     with h5py.File(filename, "r") as hfile:
         yield from iterate_chromosomes(hfile)
+
+
+def write_sparse_hdf5_stream(h5object: h5py.Group, coo_stream, row_num, col_num, nnz):
+    """
+
+    We assume that there are no duplicates and the values are ordered by (i, j).
+
+    :param h5object: h5 object
+    :param coo_stream: row, col, value
+    :param row_num: size of 1st dimension (i.e. chromosome length)
+    :param col_num: size of 2nd dimension (i.e. cell number)
+    :param nnz: number of data elements
+
+    """
+    h5object.attrs["format"] = "csr"
+    h5object["shape"] = (row_num, col_num)
+    indptr = h5object.create_dataset("indptr", shape=row_num + 1)
+    data = h5object.create_dataset("data", shape=nnz)
+    indices = h5object.create_dataset("indices", shape=nnz)
+
+    dataidx = 0
+    curr_i = 0
+    for i, j, value in coo_stream:
+        data[dataidx] = value
+        indices[dataidx] = j
+        if curr_i != i:
+            curr_i = i
+            indptr[i] = dataidx
+        dataidx += 1
+    indptr[curr_i + 1] = dataidx
+
+    return h5object
