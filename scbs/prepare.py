@@ -7,6 +7,7 @@ from .utils import echo, secho
 import sys
 import pandas as pd
 from scbs.io import write_sparse_hdf5
+from collections import Counter
 
 
 def prepare(input_files, data_dir, input_format):
@@ -22,7 +23,7 @@ def prepare(input_files, data_dir, input_format):
     # We dump the COO to hard disk to save RAM and then later convert each COO to a
     # more efficient format (CSR).
     echo(f"Processing {n_cells} methylation files...")
-    coo_files, chrom_sizes = _dump_coo_files(
+    coo_files, chrom_sizes, chrom_nnz = _dump_coo_files(
         input_files, input_format, n_cells, data_dir
     )
     echo(
@@ -36,7 +37,9 @@ def prepare(input_files, data_dir, input_format):
         for chrom in coo_files.keys():
             # create empty matrix
             chrom_size = chrom_sizes[chrom]
-            echo(f"Populating {chrom_size} x {n_cells} matrix for chromosome {chrom}...")
+            echo(
+                f"Populating {chrom_size} x {n_cells} matrix for chromosome {chrom}..."
+            )
             # populate with values from temporary COO file
             coo_path = os.path.join(data_dir, f"{chrom}.coo")
             mat = _load_csr_from_coo(coo_path, chrom_size, n_cells)
@@ -95,6 +98,7 @@ def _dump_coo_files(fpaths, input_format, n_cells, output_dir):
 
     coo_files = {}
     chrom_sizes = {}
+    chrom_nnz = Counter()
     for cell_n, cov_file in enumerate(fpaths):
         if cell_n % 50 == 0:
             echo("{0:.2f}% done...".format(100 * cell_n / n_cells))
@@ -112,12 +116,13 @@ def _dump_coo_files(fpaths, input_format, n_cells, output_dir):
             if genomic_pos > chrom_sizes[chrom]:
                 chrom_sizes[chrom] = genomic_pos
             coo_files[chrom].write(f"{genomic_pos},{cell_n},{meth_value}\n")
+            chrom_nnz[chrom] += 1
     for fhandle in coo_files.values():
         # maybe somehow use try/finally or "with" to make sure
         # they're closed even when crashing
         fhandle.close()
     echo("100% done.")
-    return coo_files, chrom_sizes
+    return coo_files, chrom_sizes, chrom_nnz
 
 
 def _load_csr_from_coo(coo_path, chrom_size, n_cells):
@@ -171,7 +176,7 @@ def _write_summary_stats(data_dir, cell_names, n_obs, n_meth):
     return out_path
 
 
-class CoverageFormat():
+class CoverageFormat:
     """Describes the columns in the coverage file."""
 
     def __init__(self, chrom, pos, meth, umeth, coverage, sep, header):
@@ -185,8 +190,15 @@ class CoverageFormat():
 
     def totuple(self):
         """Transform to use it in non-refactored code for now."""
-        return (self.chrom, self.pos, self.meth, self.umeth, self.cov,
-                self.sep, self.header)
+        return (
+            self.chrom,
+            self.pos,
+            self.meth,
+            self.umeth,
+            self.cov,
+            self.sep,
+            self.header,
+        )
 
 
 def create_custom_format(format_string):
@@ -219,9 +231,25 @@ def create_custom_format(format_string):
 def create_standard_format(format_name):
     """Create a format object on the basis of the format name."""
     if format_name in ("bismarck", "bismark"):
-        return CoverageFormat(0, 1, 4, 5, False, "\t", False,)
+        return CoverageFormat(
+            0,
+            1,
+            4,
+            5,
+            False,
+            "\t",
+            False,
+        )
     elif format_name in ("allc", "methylpy"):
-        return CoverageFormat(0, 1, 4, 5, True, "\t", True,)
+        return CoverageFormat(
+            0,
+            1,
+            4,
+            5,
+            True,
+            "\t",
+            True,
+        )
     else:
         raise Exception(f"{format_name} is not a known format")
 
@@ -266,4 +294,3 @@ def _line_to_values(line, c_col, p_col, m_col, u_col, coverage):
     else:
         n_unmeth = int(line[u_col])
     return chrom, pos, n_meth, n_unmeth
-
