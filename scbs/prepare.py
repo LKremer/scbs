@@ -8,6 +8,7 @@ import sys
 import pandas as pd
 from scbs.io import write_sparse_hdf5
 from collections import Counter
+from contextlib import ExitStack
 
 
 def prepare(input_files, data_dir, input_format):
@@ -99,28 +100,25 @@ def _dump_coo_files(fpaths, input_format, n_cells, output_dir):
     coo_files = {}
     chrom_sizes = {}
     chrom_nnz = Counter()
-    for cell_n, cov_file in enumerate(fpaths):
-        if cell_n % 50 == 0:
-            echo("{0:.2f}% done...".format(100 * cell_n / n_cells))
-        for line_vals in _iterate_covfile(
-            cov_file, c_col, p_col, m_col, u_col, coverage, sep, header
-        ):
-            chrom, genomic_pos, n_meth, n_unmeth = line_vals
-            if n_meth != 0 and n_unmeth != 0:
-                continue  # currently we ignore all CpGs that are not "clear"!
-            meth_value = 1 if n_meth > 0 else -1
-            if chrom not in coo_files:
-                coo_path = os.path.join(output_dir, f"{chrom}.coo")
-                coo_files[chrom] = open(coo_path, "w")
-                chrom_sizes[chrom] = 0
-            if genomic_pos > chrom_sizes[chrom]:
-                chrom_sizes[chrom] = genomic_pos
-            coo_files[chrom].write(f"{genomic_pos},{cell_n},{meth_value}\n")
-            chrom_nnz[chrom] += 1
-    for fhandle in coo_files.values():
-        # maybe somehow use try/finally or "with" to make sure
-        # they're closed even when crashing
-        fhandle.close()
+    with ExitStack() as stack:
+        for cell_n, cov_file in enumerate(fpaths):
+            if cell_n % 50 == 0:
+                echo("{0:.2f}% done...".format(100 * cell_n / n_cells))
+            for line_vals in _iterate_covfile(
+                cov_file, c_col, p_col, m_col, u_col, coverage, sep, header
+            ):
+                chrom, genomic_pos, n_meth, n_unmeth = line_vals
+                if n_meth != 0 and n_unmeth != 0:
+                    continue  # currently we ignore all CpGs that are not "clear"!
+                meth_value = 1 if n_meth > 0 else -1
+                if chrom not in coo_files:
+                    coo_path = os.path.join(output_dir, f"{chrom}.coo")
+                    coo_files[chrom] = stack.enter_context(open(coo_path, "w"))
+                    chrom_sizes[chrom] = 0
+                if genomic_pos > chrom_sizes[chrom]:
+                    chrom_sizes[chrom] = genomic_pos
+                coo_files[chrom].write(f"{genomic_pos},{cell_n},{meth_value}\n")
+                chrom_nnz[chrom] += 1
     echo("100% done.")
     return coo_files, chrom_sizes, chrom_nnz
 
