@@ -93,3 +93,17 @@ def test_stream_write_CSR(matrix, tmpdir):
         np.testing.assert_equal(matrix.data, data)
         np.testing.assert_equal(matrix.indices, indices)
         np.testing.assert_equal(matrix.indptr, indptr)
+
+
+@pytest.mark.parametrize("matrix", sparse_mats)
+def test_stream_write_correctly_read(matrix, tmpdir):
+    p = tmpdir
+    hfile = p / "test.hdf5"
+    with h5py.File(hfile, "w") as h5object:
+        coo_stream = iter_coo(matrix)
+        row_num, col_num = matrix.shape
+        nnz = matrix.getnnz()
+        write_sparse_hdf5_stream(h5object, coo_stream, row_num, col_num, nnz)
+    with h5py.File(hfile, "r") as h5object:
+        a = read_sparse_hdf5(h5object)
+        assert (a != matrix).nnz == 0
