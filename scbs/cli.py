@@ -3,10 +3,9 @@ from datetime import datetime, timedelta
 import click
 import numba
 from click import style
-from click_help_colors import HelpColorsGroup
-
-import scbs
-from scbs.matrix import matrix
+from datetime import datetime, timedelta
+from .utils import _get_filepath, echo
+from scbs.scan import scan
 from scbs.prepare import prepare
 from scbs.profile import profile
 from scbs.scan import scan
