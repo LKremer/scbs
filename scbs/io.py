@@ -54,7 +54,7 @@ def write_sparse_hdf5_stream(h5object: h5py.Group, coo_stream, row_num, col_num,
 
     We assume that there are no duplicates and the values are ordered by (i, j).
 
-    :param h5object: h5 object
+    :param h5object: h5 object, Group or File
     :param coo_stream: row, col, value
     :param row_num: size of 1st dimension (i.e. chromosome length)
     :param col_num: size of 2nd dimension (i.e. cell number)
