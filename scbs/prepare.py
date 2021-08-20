@@ -67,9 +67,9 @@ def save_coo_to_compressed(coo_files, destination, chrom_sizes, n_cells):
             n_meth_cell += np.ravel(np.sum(mat > 0, axis=0))
             os.remove(coo_files[chrom])
 
-        echo(f"Writing  {chrom} ...")
-        h5object = hfile.create_group(chrom)
-        write_sparse_hdf5(h5object, mat.tocsr())
+            echo(f"Writing  {chrom} ...")
+            h5object = hfile.create_group(chrom)
+            write_sparse_hdf5(h5object, mat.tocsr())
     return n_obs_cell, n_meth_cell
 
 
