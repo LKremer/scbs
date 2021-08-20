@@ -6,7 +6,7 @@ import scipy.sparse as sp_sparse
 from .utils import echo, secho
 import sys
 import pandas as pd
-from scbs.io import write_sparse_hdf5
+from scbs.io import write_sparse_hdf5, write_sparse_hdf5_stream, ChromosomeDesc
 from collections import Counter
 from contextlib import ExitStack
 from .coverage_format import create_custom_format, create_standard_format
@@ -25,7 +25,7 @@ def prepare(input_files, data_dir, input_format):
     # We dump the COO to hard disk to save RAM and then later convert each COO to a
     # more efficient format (CSR).
     echo(f"Processing {n_cells} methylation files...")
-    coo_files, chrom_sizes, chrom_nnz = _dump_coo_files(
+    coo_files, chrom_descriptions = _dump_coo_files(
         input_files, input_format, n_cells, data_dir
     )
     echo(
@@ -35,8 +35,11 @@ def prepare(input_files, data_dir, input_format):
 
     # read each COO file and convert the matrix to CSR format.
     # Write the matrices to the corresponding groups in the hdf5 file.
-    n_obs_cell, n_meth_cell = save_coo_to_compressed(
-        coo_files, os.path.join(data_dir, "scbs.hdf5"), chrom_sizes, n_cells
+    save_coo_to_compressed(
+        coo_files,
+        os.path.join(data_dir, "scbs.hdf5"),
+        chrom_descriptions,
+        save_chromosome_compressed,
     )
 
     colname_path = _write_column_names(data_dir, cell_names)
@@ -48,29 +51,35 @@ def prepare(input_files, data_dir, input_format):
         f"with {len(coo_files.keys())} chromosomes.",
         fg="green",
     )
-    return
 
 
-def save_coo_to_compressed(coo_files, destination, chrom_sizes, n_cells):
-    n_obs_cell = np.zeros(n_cells, dtype=np.int64)
-    n_meth_cell = np.zeros(n_cells, dtype=np.int64)
+def save_coo_to_compressed(coo_files, destination, chrom_descriptions, save_method):
     with h5py.File(destination, "w") as hfile:
         for chrom in coo_files.keys():
-            # create empty matrix
-            chrom_size = chrom_sizes[chrom]
+            h5object = hfile.create_group(chrom)
             echo(
-                f"Populating {chrom_size} x {n_cells} matrix for chromosome {chrom}..."
+                f"Reading {chrom_descriptions[chrom].size} x \
+                {chrom_descriptions[chrom].n_cells} COO matrix for chromosome {chrom}..."
             )
-            # populate with values from temporary COO file
-            mat = _load_csr_from_coo(coo_files[chrom], chrom_size, n_cells)
-            n_obs_cell += mat.getnnz(axis=0)
-            n_meth_cell += np.ravel(np.sum(mat > 0, axis=0))
+            echo(f"Writing  {chrom} ...")
+            save_method(coo_files[chrom], h5object, chrom_descriptions[chrom])
             os.remove(coo_files[chrom])
 
-            echo(f"Writing  {chrom} ...")
-            h5object = hfile.create_group(chrom)
-            write_sparse_hdf5(h5object, mat.tocsr())
-    return n_obs_cell, n_meth_cell
+
+def iterate_coo(coo_filename):
+    reader = pd.read_csv(coo_filename, chunksize=1e4, iterator=True)
+    for chunk in reader:
+        yield from chunk.values
+
+
+def save_chromosome_compressed(coo_filename, h5object, chrom_desc: ChromosomeDesc):
+    mat = _load_csr_from_coo(coo_filename, chrom_desc.size, chrom_desc.n_cells)
+    write_sparse_hdf5(h5object, mat.tocsr())
+
+
+def save_chromosome_compressed_stream(coo_filename, h5object, chrom_desc):
+    coo_stream = iterate_coo(coo_filename)
+    write_sparse_hdf5_stream(h5object, coo_stream, chrom_desc)
 
 
 def _get_cell_names(cov_files):
@@ -129,7 +138,11 @@ def _dump_coo_files(fpaths, input_format, n_cells, output_dir):
                 chrom_nnz[chrom] += 1
     echo("100% done.")
     coo_filenames = {chrom: coo_files[chrom].name for chrom in coo_files}
-    return coo_filenames, chrom_sizes, chrom_nnz
+    chrom_descriptions = {
+        chrom: ChromosomeDesc(chrom_sizes[chrom], n_cells, chrom_nnz[chrom])
+        for chrom in chrom_sizes
+    }
+    return coo_filenames, chrom_descriptions
 
 
 def _load_csr_from_coo(coo_path, chrom_size, n_cells):
