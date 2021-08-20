@@ -36,7 +36,7 @@ def prepare(input_files, data_dir, input_format):
     # read each COO file and convert the matrix to CSR format.
     # Write the matrices to the corresponding groups in the hdf5 file.
     n_obs_cell, n_meth_cell = save_coo_to_compressed(
-        coo_files, os.path.join(data_dir, "scbs.hdf5"), chrom_sizes, data_dir, n_cells
+        coo_files, os.path.join(data_dir, "scbs.hdf5"), chrom_sizes, n_cells
     )
 
     colname_path = _write_column_names(data_dir, cell_names)
@@ -51,7 +51,7 @@ def prepare(input_files, data_dir, input_format):
     return
 
 
-def save_coo_to_compressed(coo_files, destination, chrom_sizes, data_dir, n_cells):
+def save_coo_to_compressed(coo_files, destination, chrom_sizes, n_cells):
     n_obs_cell = np.zeros(n_cells, dtype=np.int64)
     n_meth_cell = np.zeros(n_cells, dtype=np.int64)
     with h5py.File(destination, "w") as hfile:
@@ -62,11 +62,10 @@ def save_coo_to_compressed(coo_files, destination, chrom_sizes, data_dir, n_cell
                 f"Populating {chrom_size} x {n_cells} matrix for chromosome {chrom}..."
             )
             # populate with values from temporary COO file
-            coo_path = os.path.join(data_dir, f"{chrom}.coo")
-            mat = _load_csr_from_coo(coo_path, chrom_size, n_cells)
+            mat = _load_csr_from_coo(coo_files[chrom], chrom_size, n_cells)
             n_obs_cell += mat.getnnz(axis=0)
             n_meth_cell += np.ravel(np.sum(mat > 0, axis=0))
-            os.remove(coo_path)
+            os.remove(coo_files[chrom])
 
         echo(f"Writing  {chrom} ...")
         h5object = hfile.create_group(chrom)
@@ -129,7 +128,8 @@ def _dump_coo_files(fpaths, input_format, n_cells, output_dir):
                 coo_files[chrom].write(f"{genomic_pos},{cell_n},{meth_value}\n")
                 chrom_nnz[chrom] += 1
     echo("100% done.")
-    return coo_files, chrom_sizes, chrom_nnz
+    coo_filenames = {chrom:coo_files[chrom].name for chrom in coo_files}
+    return coo_filenames, chrom_sizes, chrom_nnz
 
 
 def _load_csr_from_coo(coo_path, chrom_size, n_cells):
