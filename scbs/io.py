@@ -1,5 +1,13 @@
 import h5py
 import scipy.sparse as sparse
+from dataclasses import dataclass
+
+
+@dataclass
+class ChromosomeDesc:
+    size: int
+    n_cells: int
+    nnz: int
 
 
 def write_sparse_hdf5(h5object, matrix):
