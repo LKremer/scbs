@@ -70,7 +70,7 @@ def save_coo_to_compressed(coo_files, destination, chrom_sizes, n_cells):
         echo(f"Writing  {chrom} ...")
         h5object = hfile.create_group(chrom)
         write_sparse_hdf5(h5object, mat.tocsr())
-        return n_obs_cell, n_meth_cell
+    return n_obs_cell, n_meth_cell
 
 
 def _get_cell_names(cov_files):
@@ -128,7 +128,7 @@ def _dump_coo_files(fpaths, input_format, n_cells, output_dir):
                 coo_files[chrom].write(f"{genomic_pos},{cell_n},{meth_value}\n")
                 chrom_nnz[chrom] += 1
     echo("100% done.")
-    coo_filenames = {chrom:coo_files[chrom].name for chrom in coo_files}
+    coo_filenames = {chrom: coo_files[chrom].name for chrom in coo_files}
     return coo_filenames, chrom_sizes, chrom_nnz
 
 
