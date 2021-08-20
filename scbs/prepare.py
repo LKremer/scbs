@@ -34,24 +34,9 @@ def prepare(input_files, data_dir, input_format):
 
     # read each COO file and convert the matrix to CSR format.
     # Write the matrices to the corresponding groups in the hdf5 file.
-    with h5py.File(os.path.join(data_dir, "scbs.hdf5"), "w") as hfile:
-        for chrom in coo_files.keys():
-            # create empty matrix
-            chrom_size = chrom_sizes[chrom]
-            echo(
-                f"Populating {chrom_size} x {n_cells} matrix for chromosome {chrom}..."
-            )
-            # populate with values from temporary COO file
-            coo_path = os.path.join(data_dir, f"{chrom}.coo")
-            mat = _load_csr_from_coo(coo_path, chrom_size, n_cells)
-            n_obs_cell += mat.getnnz(axis=0)
-            n_meth_cell += np.ravel(np.sum(mat > 0, axis=0))
-
-            echo(f"Writing  {chrom} ...")
-            h5object = hfile.create_group(chrom)
-            write_sparse_hdf5(h5object, mat.tocsc())
-
-            os.remove(coo_path)  # delete temporary .coo file
+    n_obs_cell, n_meth_cell = save_coo_to_compressed(
+        coo_files, os.path.join(data_dir, "scbs.hdf5"), chrom_sizes, data_dir, n_cells
+    )
 
     colname_path = _write_column_names(data_dir, cell_names)
     echo(f"\nWrote matrix column names to {colname_path}")
@@ -63,6 +48,29 @@ def prepare(input_files, data_dir, input_format):
         fg="green",
     )
     return
+
+
+def save_coo_to_compressed(coo_files, destination, chrom_sizes, data_dir, n_cells):
+    n_obs_cell = np.zeros(n_cells, dtype=np.int64)
+    n_meth_cell = np.zeros(n_cells, dtype=np.int64)
+    with h5py.File(destination, "w") as hfile:
+        for chrom in coo_files.keys():
+            # create empty matrix
+            chrom_size = chrom_sizes[chrom]
+            echo(
+                f"Populating {chrom_size} x {n_cells} matrix for chromosome {chrom}..."
+            )
+            # populate with values from temporary COO file
+            coo_path = os.path.join(data_dir, f"{chrom}.coo")
+            mat = _load_csr_from_coo(coo_path, chrom_size, n_cells)
+            n_obs_cell += mat.getnnz(axis=0)
+            n_meth_cell += np.ravel(np.sum(mat > 0, axis=0))
+            os.remove(coo_path)
+
+        echo(f"Writing  {chrom} ...")
+        h5object = hfile.create_group(chrom)
+        write_sparse_hdf5(h5object, mat.tocsr())
+        return n_obs_cell, n_meth_cell
 
 
 def _get_cell_names(cov_files):
