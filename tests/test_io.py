@@ -72,7 +72,8 @@ def swap_row_col(coo_stream):
 
 sparse_mats = [
     sparse.csr_matrix([[1, 0, 0], [0, 2, 0], [0, 0, 3]]),
-    sparse.csr_matrix([[1, 1, 0], [2, 2, 0], [0, 3, 3]]),
+    sparse.csr_matrix([[1, 1, 0], [2, 2, 0], [0, 0, 0]]),
+    sparse.csr_matrix([[1, 1, 0], [2, 2, 0], [0, 0, 0], [0, 0, 0]]),
 ]
 
 
