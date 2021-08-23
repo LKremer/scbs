@@ -6,13 +6,13 @@ import scipy.sparse as sp_sparse
 from .utils import echo, secho
 import sys
 import pandas as pd
-from scbs.io import write_sparse_hdf5, write_sparse_hdf5_stream, ChromosomeDesc
+from scbs.io import write_sparse_hdf5, write_sparse_hdf5_stream, ChromosomeDataDesc
 from collections import Counter
 from contextlib import ExitStack
 from .coverage_format import create_custom_format, create_standard_format
 
 
-def prepare(input_files, data_dir, input_format):
+def prepare(input_files, data_dir, input_format, streamed_write=False):
     cell_names = _get_cell_names(input_files)
     n_cells = len(cell_names)
     # we use this opportunity to count some basic summary stats
@@ -32,14 +32,15 @@ def prepare(input_files, data_dir, input_format):
         "\nStoring methylation data in 'compressed "
         "sparse row' (CSR) matrix format for future use."
     )
-
     # read each COO file and convert the matrix to CSR format.
     # Write the matrices to the corresponding groups in the hdf5 file.
+    save_method = (
+        save_chromosome_compressed_stream
+        if streamed_write
+        else save_chromosome_compressed
+    )
     save_coo_to_compressed(
-        coo_files,
-        os.path.join(data_dir, "scbs.hdf5"),
-        chrom_descriptions,
-        save_chromosome_compressed,
+        coo_files, os.path.join(data_dir, "scbs.hdf5"), chrom_descriptions, save_method
     )
 
     colname_path = _write_column_names(data_dir, cell_names)
@@ -67,19 +68,22 @@ def save_coo_to_compressed(coo_files, destination, chrom_descriptions, save_meth
 
 
 def iterate_coo(coo_filename):
-    reader = pd.read_csv(coo_filename, chunksize=1e4, iterator=True)
-    for chunk in reader:
-        yield from chunk.values
+    with open(coo_filename) as f:
+        for line in f:
+            pos, cell, value = line.strip().split(",")
+            yield int(pos), int(cell), float(value)
 
 
-def save_chromosome_compressed(coo_filename, h5object, chrom_desc: ChromosomeDesc):
+def save_chromosome_compressed(coo_filename, h5object, chrom_desc: ChromosomeDataDesc):
     mat = _load_csr_from_coo(coo_filename, chrom_desc.size, chrom_desc.n_cells)
     write_sparse_hdf5(h5object, mat.tocsr())
 
 
 def save_chromosome_compressed_stream(coo_filename, h5object, chrom_desc):
     coo_stream = iterate_coo(coo_filename)
-    write_sparse_hdf5_stream(h5object, coo_stream, chrom_desc)
+    write_sparse_hdf5_stream(
+        h5object, coo_stream, chrom_desc.size, chrom_desc.n_cells, chrom_desc.nnz
+    )
 
 
 def _get_cell_names(cov_files):
@@ -139,7 +143,7 @@ def _dump_coo_files(fpaths, input_format, n_cells, output_dir):
     echo("100% done.")
     coo_filenames = {chrom: coo_files[chrom].name for chrom in coo_files}
     chrom_descriptions = {
-        chrom: ChromosomeDesc(chrom_sizes[chrom], n_cells, chrom_nnz[chrom])
+        chrom: ChromosomeDataDesc(chrom_sizes[chrom], n_cells, chrom_nnz[chrom])
         for chrom in chrom_sizes
     }
     return coo_filenames, chrom_descriptions
