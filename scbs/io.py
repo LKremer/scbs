@@ -1,19 +1,20 @@
 import h5py
 import scipy.sparse as sparse
 from dataclasses import dataclass
+import numpy as np
 
 
 @dataclass
-class ChromosomeDesc:
+class ChromosomeDataDesc:
     size: int
     n_cells: int
     nnz: int
 
 
 def write_sparse_hdf5(h5object, matrix):
-    h5object["indptr"] = matrix.indptr
-    h5object["data"] = matrix.data
-    h5object["indices"] = matrix.indices
+    h5object.create_dataset("indptr", data=matrix.indptr, compression="gzip")
+    h5object.create_dataset("data", data=matrix.data, compression="gzip")
+    h5object.create_dataset("indices", data=matrix.indices, compression="gzip")
     h5object.attrs["format"] = matrix.format
     h5object["shape"] = matrix.shape
 
@@ -71,9 +72,13 @@ def write_sparse_hdf5_stream(h5object: h5py.Group, coo_stream, row_num, col_num,
     """
     h5object.attrs["format"] = "csr"
     h5object["shape"] = (row_num, col_num)
-    indptr = h5object.create_dataset("indptr", shape=row_num + 1)
-    data = h5object.create_dataset("data", shape=nnz)
-    indices = h5object.create_dataset("indices", shape=nnz)
+    indptr = h5object.create_dataset(
+        "indptr", dtype=np.int32, shape=row_num + 1, compression="gzip"
+    )
+    data = h5object.create_dataset("data", dtype=np.float16, shape=nnz, compression="gzip")
+    indices = h5object.create_dataset(
+        "indices", dtype=np.int32, shape=nnz, compression="gzip"
+    )
 
     dataidx = 0
     curr_i = 0
@@ -84,6 +89,8 @@ def write_sparse_hdf5_stream(h5object: h5py.Group, coo_stream, row_num, col_num,
             curr_i = i
             indptr[i] = dataidx
         dataidx += 1
-    indptr[curr_i + 1] = dataidx
+    if curr_i <= row_num:
+        for k in range(curr_i + 1, row_num + 1):
+            indptr[k] = dataidx
 
     return h5object
