@@ -5,10 +5,7 @@ import numba
 from click import style
 from click_help_colors import HelpColorsGroup
 
-from scbs.prepare import prepare
-from scbs.profile import profile
-from scbs.scan import scan
-from scbs.smooth import smooth
+import scbs
 from scbs.utils import _get_filepath, echo
 
 
@@ -129,6 +126,7 @@ def cli():
     '0'.""",
 )
 def prepare_cli(**kwargs):
+    from scbs.prepare import prepare
     timer = Timer(label="prepare")
     _print_kwargs(kwargs)
     prepare(**kwargs)
@@ -189,6 +187,7 @@ def prepare_cli(**kwargs):
     "you want to concatenate multiple outputs  [optional].",
 )
 def profile_cli(**kwargs):
+    from scbs.profile import profile
     timer = Timer(label="profile")
     _print_kwargs(kwargs)
     profile(**kwargs)
@@ -232,6 +231,7 @@ def profile_cli(**kwargs):
     help="Use this to weigh each methylation site by log1p(coverage).",
 )
 def smooth_cli(**kwargs):
+    from scbs.smooth import smooth
     timer = Timer(label="smooth")
     _print_kwargs(kwargs)
     smooth(**kwargs)
@@ -334,6 +334,7 @@ def matrix_cli(**kwargs):
     callback=_set_n_threads,
 )
 def scan_cli(**kwargs):
+    from scbs.scan import scan
     timer = Timer(label="scan")
     _print_kwargs(kwargs)
     scan(**kwargs)
