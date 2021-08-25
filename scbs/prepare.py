@@ -55,6 +55,15 @@ def prepare(input_files, data_dir, input_format, streamed_write=False):
 
 
 def save_coo_to_compressed(coo_files, destination, chrom_descriptions, save_method):
+    """Saves all chromosome COO files into a single file with compressed sparse matrix format.
+
+    :param coo_files: a list of file names
+    :param destination: file name
+    :param chrom_descriptions: list of ChromosomeDataDesc objects (we need to know e.g. the dimensions)
+    :param save_method: whether to load all in memory (save_chromosome_compressed) or stream,
+      in case it is preferred.
+
+    """
     with h5py.File(destination, "w") as hfile:
         for chrom in coo_files.keys():
             h5object = hfile.create_group(chrom)
