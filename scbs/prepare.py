@@ -6,12 +6,13 @@ import scipy.sparse as sp_sparse
 from .utils import echo, secho
 import sys
 import pandas as pd
-from scbs.io import write_sparse_hdf5
+from scbs.io import write_sparse_hdf5, write_sparse_hdf5_stream, ChromosomeDataDesc
 from collections import Counter
 from contextlib import ExitStack
+from .coverage_format import create_custom_format, create_standard_format
 
 
-def prepare(input_files, data_dir, input_format):
+def prepare(input_files, data_dir, input_format, streamed_write=False):
     cell_names = _get_cell_names(input_files)
     n_cells = len(cell_names)
     # we use this opportunity to count some basic summary stats
@@ -24,34 +25,23 @@ def prepare(input_files, data_dir, input_format):
     # We dump the COO to hard disk to save RAM and then later convert each COO to a
     # more efficient format (CSR).
     echo(f"Processing {n_cells} methylation files...")
-    coo_files, chrom_sizes, chrom_nnz = _dump_coo_files(
+    coo_files, chrom_descriptions = _dump_coo_files(
         input_files, input_format, n_cells, data_dir
     )
     echo(
         "\nStoring methylation data in 'compressed "
         "sparse row' (CSR) matrix format for future use."
     )
-
     # read each COO file and convert the matrix to CSR format.
     # Write the matrices to the corresponding groups in the hdf5 file.
-    with h5py.File(os.path.join(data_dir, "scbs.hdf5"), "w") as hfile:
-        for chrom in coo_files.keys():
-            # create empty matrix
-            chrom_size = chrom_sizes[chrom]
-            echo(
-                f"Populating {chrom_size} x {n_cells} matrix for chromosome {chrom}..."
-            )
-            # populate with values from temporary COO file
-            coo_path = os.path.join(data_dir, f"{chrom}.coo")
-            mat = _load_csr_from_coo(coo_path, chrom_size, n_cells)
-            n_obs_cell += mat.getnnz(axis=0)
-            n_meth_cell += np.ravel(np.sum(mat > 0, axis=0))
-
-            echo(f"Writing  {chrom} ...")
-            h5object = hfile.create_group(chrom)
-            write_sparse_hdf5(h5object, mat.tocsc())
-
-            os.remove(coo_path)  # delete temporary .coo file
+    save_method = (
+        save_chromosome_compressed_stream
+        if streamed_write
+        else save_chromosome_compressed
+    )
+    save_coo_to_compressed(
+        coo_files, os.path.join(data_dir, "scbs.hdf5"), chrom_descriptions, save_method
+    )
 
     colname_path = _write_column_names(data_dir, cell_names)
     echo(f"\nWrote matrix column names to {colname_path}")
@@ -62,7 +52,47 @@ def prepare(input_files, data_dir, input_format):
         f"with {len(coo_files.keys())} chromosomes.",
         fg="green",
     )
-    return
+
+
+def save_coo_to_compressed(coo_files, destination, chrom_descriptions, save_method):
+    """Saves all chromosome COO files into a single file with compressed sparse matrix format.
+
+    :param coo_files: a list of file names
+    :param destination: file name
+    :param chrom_descriptions: list of ChromosomeDataDesc objects (we need to know e.g. the dimensions)
+    :param save_method: whether to load all in memory (save_chromosome_compressed) or stream,
+      in case it is preferred.
+
+    """
+    with h5py.File(destination, "w") as hfile:
+        for chrom in coo_files.keys():
+            h5object = hfile.create_group(chrom)
+            echo(
+                f"Reading {chrom_descriptions[chrom].size} x \
+                {chrom_descriptions[chrom].n_cells} COO matrix for chromosome {chrom}..."
+            )
+            echo(f"Writing  {chrom} ...")
+            save_method(coo_files[chrom], h5object, chrom_descriptions[chrom])
+            os.remove(coo_files[chrom])
+
+
+def iterate_coo(coo_filename):
+    with open(coo_filename) as f:
+        for line in f:
+            pos, cell, value = line.strip().split(",")
+            yield int(pos), int(cell), float(value)
+
+
+def save_chromosome_compressed(coo_filename, h5object, chrom_desc: ChromosomeDataDesc):
+    mat = _load_csr_from_coo(coo_filename, chrom_desc.size, chrom_desc.n_cells)
+    write_sparse_hdf5(h5object, mat.tocsr())
+
+
+def save_chromosome_compressed_stream(coo_filename, h5object, chrom_desc):
+    coo_stream = iterate_coo(coo_filename)
+    write_sparse_hdf5_stream(
+        h5object, coo_stream, chrom_desc.size, chrom_desc.n_cells, chrom_desc.nnz
+    )
 
 
 def _get_cell_names(cov_files):
@@ -120,7 +150,12 @@ def _dump_coo_files(fpaths, input_format, n_cells, output_dir):
                 coo_files[chrom].write(f"{genomic_pos},{cell_n},{meth_value}\n")
                 chrom_nnz[chrom] += 1
     echo("100% done.")
-    return coo_files, chrom_sizes, chrom_nnz
+    coo_filenames = {chrom: coo_files[chrom].name for chrom in coo_files}
+    chrom_descriptions = {
+        chrom: ChromosomeDataDesc(chrom_sizes[chrom], n_cells, chrom_nnz[chrom])
+        for chrom in chrom_sizes
+    }
+    return coo_filenames, chrom_descriptions
 
 
 def _load_csr_from_coo(coo_path, chrom_size, n_cells):
@@ -172,84 +207,6 @@ def _write_summary_stats(data_dir, cell_names, n_obs, n_meth):
     with open(out_path, "w") as outfile:
         outfile.write(stats_df.to_csv(index=False))
     return out_path
-
-
-class CoverageFormat:
-    """Describes the columns in the coverage file."""
-
-    def __init__(self, chrom, pos, meth, umeth, coverage, sep, header):
-        self.chrom = chrom
-        self.pos = pos
-        self.meth = meth
-        self.umeth = umeth
-        self.cov = coverage
-        self.sep = sep
-        self.header = header
-
-    def totuple(self):
-        """Transform to use it in non-refactored code for now."""
-        return (
-            self.chrom,
-            self.pos,
-            self.meth,
-            self.umeth,
-            self.cov,
-            self.sep,
-            self.header,
-        )
-
-
-def create_custom_format(format_string):
-    """Create from user specified string."""
-    format_string = format_string.lower().split(":")
-    if len(format_string) != 6:
-        raise Exception("Invalid number of ':'-separated values in custom input format")
-    chrom = int(format_string[0]) - 1
-    pos = int(format_string[1]) - 1
-    meth = int(format_string[2]) - 1
-    info = format_string[3][-1]
-    if info == "c":
-        coverage = True
-    elif info == "m":
-        coverage = False
-    else:
-        raise Exception(
-            "The 4th column of a custom input format must contain an integer and "
-            "either 'c' for coverage or 'm' for methylation (e.g. '4c'), but you "
-            f"provided '{format_string[3]}'."
-        )
-    umeth = int(format_string[3][0:-1]) - 1
-    sep = str(format_string[4])
-    if sep == "\\t":
-        sep = "\t"
-    header = bool(int(format_string[5]))
-    return CoverageFormat(chrom, pos, meth, umeth, coverage, sep, header)
-
-
-def create_standard_format(format_name):
-    """Create a format object on the basis of the format name."""
-    if format_name in ("bismarck", "bismark"):
-        return CoverageFormat(
-            0,
-            1,
-            4,
-            5,
-            False,
-            "\t",
-            False,
-        )
-    elif format_name in ("allc", "methylpy"):
-        return CoverageFormat(
-            0,
-            1,
-            4,
-            5,
-            True,
-            "\t",
-            True,
-        )
-    else:
-        raise Exception(f"{format_name} is not a known format")
 
 
 def _iterate_covfile(cov_file, c_col, p_col, m_col, u_col, coverage, sep, header):
