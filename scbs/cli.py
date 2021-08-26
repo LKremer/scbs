@@ -275,6 +275,7 @@ def smooth_cli(**kwargs):
 def matrix_cli(**kwargs):
     timer = Timer(label="matrix")
     _print_kwargs(kwargs)
+    from scbs.matrix import matrix
     matrix(**kwargs)
     timer.stop()
 
