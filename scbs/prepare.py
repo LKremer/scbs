@@ -1,15 +1,19 @@
-import numpy as np
-import h5py
 import gzip
 import os
-import scipy.sparse as sp_sparse
-from .utils import echo, secho
 import sys
-import pandas as pd
-from scbs.io import write_sparse_hdf5, write_sparse_hdf5_stream, ChromosomeDataDesc
 from collections import Counter
 from contextlib import ExitStack
+
+import h5py
+import numpy as np
+import pandas as pd
+import scipy.sparse as sp_sparse
+
+from scbs.io import (ChromosomeDataDesc, write_sparse_hdf5,
+                     write_sparse_hdf5_stream)
+
 from .coverage_format import create_custom_format, create_standard_format
+from .utils import echo, secho
 
 
 def prepare(input_files, data_dir, input_format, streamed_write=False):
