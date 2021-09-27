@@ -125,13 +125,19 @@ def cli():
     All column numbers are 1-indexed, i.e. to define the first column use '1' and not
     '0'.""",
 )
+@click.option(
+    "--streamed-write",
+    type=click.BOOL,
+    is_flag=True,
+    help="""Use this flag for large data volumes, which do not fit into the memory.
+    With --streamed-write the data are processed in chunks.""",
+)
 def prepare_cli(**kwargs):
     from scbs.prepare import prepare
     timer = Timer(label="prepare")
     _print_kwargs(kwargs)
     prepare(**kwargs)
     timer.stop()
-
 
 # profile command
 @cli.command(
