@@ -45,3 +45,9 @@ If you encounter problems during installation, make sure you have Python3.8 or h
 - [ ] write basic tests & docs
 - [ ] add further functionality (e.g. SVD, plotting, clustering, testing for differential methylation between clusters, usage without CLI...)
 - [ ] output "count" matrices as an [AnnData](https://anndata.readthedocs.io/en/latest/) object, so we can interface with scanpy, episcanpy, muon...
+
+## Contributors
+- [Lukas PM Kremer](https://github.com/LKremer)
+- [Leonie Küchenhoff](https://github.com/LeonieKuechenhoff)
+- [Alexey Uvarovskii](https://github.com/alexey0308)
+- [Simon Anders](https://github.com/simon-anders)
