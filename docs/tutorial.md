@@ -1,9 +1,15 @@
 # Tutorial
 
-## Summary of a typical `scbs` workflow
+## Usage principles
 
-1. use `scbs prepare` to store sc-methylation data in an efficient format
-2. use `scbs scan` to discover methylation-variable regions in the genome, or provide your own regions of interest
+`scbs` provides a number of subcommands.
+To view the available subcommands, simply install `scbs` and then type `scbs --help` (or just `scbs`) in your terminal.
+Similarly, you can use `scbs [subcommand] --help` to learn about each subcommand and their arguments.
+For example, use `scbs prepare --help` to learn how to use the `prepare` subcommand.
+
+A typical `scbs` workflow consists of the following steps which will be explained in the course of this tutorial:
+1. use `scbs prepare` to store single-cell methylation data in an efficient format
+2. use `scbs scan` to discover methylation-variable regions in the genome, or alternatively provide your own regions of interest
 3. use `scbs matrix` to receive a matrix analogous to the count matrix in scRNA-seq
 4. use the matrix for downstream analysis such as dimensionality reduction and clustering
 
@@ -11,7 +17,7 @@
 ### What you will need
 
 `scbs` assumes that you
-- used single-cell bisulfite-sequencing to generate FASTQ-files of bisulfite-converted reads
+- used single-cell bisulfite-sequencing (scBS) to generate FASTQ-files of bisulfite-converted reads
 - mapped the reads with a methylation-aware program
 - extracted context-dependent methylation values (typically CpG) from the alignments
 
@@ -34,6 +40,68 @@ If you did not use Bismark and your files have a slightly different format, don'
 We support a range of different input formats and you can even define your own custom format.
 
 
-### 1. Using `scbs prepare`
+## Download our tutorial data set
 
-to do
+In this tutorial, we will analyze a small example data set. If you want to follow along and try it yourself, you can download the data here:
+
+**(TO DO: make a little example data set including some cov files and host it somewhere)**
+
+
+### 1. Preparing your `scbs` run
+
+The first step of any `scbs` workflow is to collect the methylation data of all single-cell files in order to store it in a more efficient format.
+This can be achieved with the commands `scbs prepare` and `scbs smooth`:
+
+```bash
+scbs prepare scbs_tutorial_data/*.cov.gz compact_data
+scbs smooth compact_data
+```
+
+This command will take all files ending in `.cov.gz` in the `scbs_tutorial_data` directory and efficiently store their methylation values in a new directory called `compact_data`.
+`scbs prepare` is the only step that requires the raw data, all other `scbs` commands work directly with `compact_data`.
+If you're working with your own data and you sequenced thousands of cells, `scbs prepare` will take quite long. But fortunately, you only have to run it once in the very beginning.
+
+
+### 2. Discovering methylation-variable regions
+
+The starting point of any single-cell RNA-seq experiment is a gene × cell (or cell × gene) count matrix that can be used for downstream analyses such as dimensionality reduction or clustering.
+But single-cell methylation data is genome-wide and not limited to genes, hence we need to define genomic regions of interest.
+A common strategy is to simply quantify methylation at promoters or gene bodies.
+But not all methylation differences occur at promoters or gene bodies, hence we propose to discover methylation-variable regions (MVRs) in the data itself.
+This can be achieved with `scbs scan`:
+
+```bash
+scbs scan compact_data MVRs.bed
+```
+
+The result is a [BED-file](https://en.wikipedia.org/wiki/BED_(file_format)) that lists the genomic coordinates (chromosome, start, end) of regions where methylation is variable between cells.
+
+
+
+### 3. Getting a methylation matrix
+
+Finally, you can quantify the mean methylation of the MVRs that we just discovered using `scbs matrix`:
+```bash
+scbs matrix MVRs.bed compact_data MVR_matrix.csv
+```
+**(TO DO: output the data in a sane format cause long tables are too unwieldy if you have thousands of cells, then adjust the tutorial)**
+
+
+
+
+
+### Advanced usage
+
+#### Using stdin and stdout instead of files
+If you want to use stdin and stdout instead of providing input/output file paths, you can use the `-` character where you would otherwise write the path to the file.
+This makes it easy to incorporate other tools such as `bedtools` into your workflows.
+For example, consider a workflow where you first want to sort your genomic input regions with `bedtools sort`, then you want to quantify methylation at these regions with `scbs matrix`, and then you want to compress the resulting matrix:
+```bash
+bedtools sort -i unsorted.bed > sorted.bed
+scbs matrix sorted.bed compact_data matrix.csv
+gzip matrix.csv
+```
+Using stdin and stdout, this workflow can be simplified:
+```bash
+bedtools sort -i unsorted.bed | scbs matrix - compact_data - | gzip > matrix.csv.gz
+```
