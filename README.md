@@ -33,6 +33,9 @@ or to get help for a subcommand, e.g. "prepare":
 scbs prepare --help
 ```
 
+## Tutorial of a typical `scbs` run
+A tutorial can be found [here](docs/tutorial.md).
+
 ## Troubleshooting
 If you encounter a "too many open files" error during `scbs prepare` (`OSError: [Errno 24] Too many open files`), you need to increase the maximum number of files that can be opened. In Unix systems, try `ulimit -n 9999`.  
 If you encounter problems during installation, make sure you have Python3.8 or higher. If the problem persists, consider installing scbs in a clean Python environment (for example using [venv](https://docs.python.org/3/library/venv.html)).
