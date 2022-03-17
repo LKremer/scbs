@@ -35,9 +35,12 @@ Here are the first five lines of an example file, which is a `.cov`-file generat
 ```
 
 You need one of these files per cell.
+
 The columns denote the chromosome name, the start and end coordinates of the methylation site (identical in this case), the observed percentage of methylation (typically 0% or 100% in single-cell data), the number of reads that are methylated at that site, and the number of unmethylated reads.
 If you did not use Bismark and your files have a slightly different format, don't worry.
 We support a range of different input formats and you can even define your own custom format.
+
+`scbs` supports both uncompressed and gzip-compressed input files, as long as any gzipped files end in `.gz`.
 
 
 ## Download our tutorial data set
