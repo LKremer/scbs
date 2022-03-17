@@ -73,7 +73,7 @@ This can be achieved with `scbs scan`:
 ```bash
 scbs scan compact_data MVRs.bed
 ```
-
+Be careful though, by default `scbs scan` uses all available CPU threads to increase performance. If you don't want this, use e.g. `--threads 4` to use only four threads.
 The result is a [BED-file](https://en.wikipedia.org/wiki/BED_(file_format)) that lists the genomic coordinates (chromosome, start, end) of regions where methylation is variable between cells.
 
 
