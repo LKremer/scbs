@@ -34,7 +34,7 @@ Here are the first five lines of an example file, which is a `.cov`-file generat
 1       100051671       100051671       0.000000        0       2
 ```
 
-You need one of these files per cell.
+You should have one of these files per cell.
 
 The columns denote the chromosome name, the start and end coordinates of the methylation site (identical in this case), the observed percentage of methylation (typically 0% or 100% in single-cell data), the number of reads that are methylated at that site, and the number of unmethylated reads.
 If you did not use Bismark and your files have a slightly different format, don't worry.
@@ -45,9 +45,8 @@ We support a range of different input formats and you can even define your own c
 
 ## Download our tutorial data set
 
-In this tutorial, we will analyze a small example data set. If you want to follow along and try it yourself, you can download the data here:
-
-**(TO DO: make a little example data set including some cov files and host it somewhere)**
+In this tutorial, we will analyze a small example data set with just 30 cells. If you want to follow along and try it yourself, you can download the data here:
+[scbs_tutorial_data.tar.gz](https://heibox.uni-heidelberg.de/f/0a74cc5fd8a141a4bab8/?dl=1) and unpack it with `tar -xvzf scbs_tutorial_data.tar.gz`.
 
 
 ### 1. Preparing your `scbs` run
@@ -56,7 +55,7 @@ The first step of any `scbs` workflow is to collect the methylation data of all 
 This can be achieved with the commands `scbs prepare` and `scbs smooth`:
 
 ```bash
-scbs prepare scbs_tutorial_data/*.cov.gz compact_data
+scbs prepare scbs_tutorial_data/*.cov compact_data
 scbs smooth compact_data
 ```
 
@@ -74,11 +73,10 @@ But not all methylation differences occur at promoters or gene bodies, hence we 
 This can be achieved with `scbs scan`:
 
 ```bash
-scbs scan compact_data MVRs.bed
+scbs scan --threads 4 compact_data MVRs.bed
 ```
-Be careful though, by default `scbs scan` uses all available CPU threads to increase performance. If you don't want this, use e.g. `--threads 4` to use only four threads.
-The result is a [BED-file](https://en.wikipedia.org/wiki/BED_(file_format)) that lists the genomic coordinates (chromosome, start, end) of regions where methylation is variable between cells.
-
+We use the option `--threads 4` in order to run the program on 4 CPU threads in parallel. If you want to use all available threads, simply omit the `--threads` option altogether.
+The result is a [BED-file](https://en.wikipedia.org/wiki/BED_(file_format)) that lists the genomic coordinates (chromosome, start, end) of regions where methylation is variable between cells, as well as the methylation variance of the region.
 
 
 ### 3. Getting a methylation matrix
@@ -87,9 +85,80 @@ Finally, you can quantify the mean methylation of the MVRs that we just discover
 ```bash
 scbs matrix MVRs.bed compact_data MVR_matrix.csv
 ```
+The result is a long table that lists the average methylation of all regions (here: MVRs) in all cells. We report two measures of methylation: the average methylation (`meth_frac`) and the shrunken residuals, which are less affected by random variations in read coverage and read positioning within the region.
+
 **(TO DO: output the data in a sane format cause long tables are too unwieldy if you have thousands of cells, then adjust the tutorial)**
 
 
+
+### 4. Downstream analysis
+
+Now we can import our methylation matrix into a scripting language of your choice for downstream analysis. In this tutorial, we chose to use R.
+We read the matrix and create a new column `region` that denotes the genomic coordinates of each region.
+Next, we pivot the matrix from the long table format into a standard cell × region format.
+Here we chose to use the shrunken residuals as our measure of methylation.
+Finally, we transform the dataframe into a matrix.
+
+```
+library(tidyverse)
+library(irlba)
+
+meth_mtx <- read_csv("MVR_matrix.csv") %>% 
+  unite("region", c("chromosome", "start", "end")) %>% 
+  pivot_wider("cell_name", names_from = "region", values_from = "shrunken_residual") %>% 
+  column_to_rownames(var="cell_name") %>% 
+  as.matrix()
+```
+
+The methylation matrix is similar to a scRNA-seq count matrix, but one major difference is that it contains missing values.
+This is because the coverage of every single cell is low, which means that there are plenty of genomic intervals that did not receive a single sequencing read.
+To counter this, we propose a simple and straightforward way to deal with missing data in the input matrix to a PCA: In a first iteration, we replace each missing value in the centered input matrix with zero, then run the PCA. Then, these zeroes are replaced by the value predicted by the PCA and the PCA is rerun.
+
+Below, you can find an R function that implements this approach:
+```r
+# PCA that iteratively imputes missing values
+prcomp_iterative <- function(x, n=10, n_iter=100, min_gain=0.01, ...) {
+  mse <- rep(NA, n_iter)
+  na_loc <- is.na(x)
+  x[na_loc] = 0  # zero is our first guess
+
+  for (i in 1:n_iter) {
+    prev_imp <- x[na_loc]  # what we imputed in the previous round
+    # PCA on the imputed matrix
+    pr <- prcomp_irlba(x, center = F, scale. = F, n = n, ...)
+    # impute missing values with PCA
+    new_imp <- (pr$x %*% t(pr$rotation))[na_loc]
+    x[na_loc] <- new_imp
+    # compare our new imputed values to the ones from the previous round
+    mse[i] = mean((prev_imp - new_imp) ^ 2)
+    # if the values didn't change a lot, terminate the iteration
+    gain <- mse[i] / max(mse, na.rm = T)
+    if (gain < min_gain) {
+      message(paste(c("\n\nTerminated after ", i, " iterations.")))
+      break
+    }
+  }
+  pr$mse_iter <- mse[1:i]
+  pr
+}
+```
+
+We simply run our modified PCA on the centered methylation matrix...
+```r
+pca <- meth_mtx %>%
+  scale(center = T, scale = F) %>%
+  prcomp_impute(n = 5, n_iter = 5)
+```
+
+...and then plot the PCA, revealing three cell types with distinct methylomes:
+```r
+pca$x %>% 
+  as_tibble() %>% 
+  ggplot(aes(x = PC1, y = PC2)) +
+  geom_point() +
+  coord_fixed()
+```
+![A PCA of the methylation matrix that reveals three groups of cells](tutorial_PCA.png)
 
 
 
