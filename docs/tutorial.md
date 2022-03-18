@@ -85,7 +85,13 @@ Finally, you can quantify the mean methylation of the MVRs that we just discover
 ```bash
 scbs matrix MVRs.bed compact_data MVR_matrix.csv
 ```
-The result is a long table that lists the average methylation of all regions (here: MVRs) in all cells. We report two measures of methylation: the average methylation (`meth_frac`) and the shrunken residuals, which are less affected by random variations in read coverage and read positioning within the region.
+The result is a long table that lists the average methylation of all regions (here: MVRs) in all cells. We report two measures of methylation: the average methylation (`meth_frac`) and the shrunken residuals (`shrunken_residual`), which are less affected by random variations in read coverage and read positioning within the region.
+
+If you want, you can also get a methylation matrix of specific genomic features that you are interested in.
+For example, here we quantify methylation of promoters in the mouse genome:
+```bash
+scbs matrix scbs_tutorial_data/mouse_promoters.bed compact_data promoter_matrix.csv
+```
 
 **(TO DO: output the data in a sane format cause long tables are too unwieldy if you have thousands of cells, then adjust the tutorial)**
 
@@ -93,13 +99,14 @@ The result is a long table that lists the average methylation of all regions (he
 
 ### 4. Downstream analysis
 
-Now we can import our methylation matrix into a scripting language of your choice for downstream analysis. In this tutorial, we chose to use R.
+Now we can import our methylation matrix into a scripting language of our choice for downstream analysis.
+In this tutorial, we chose to use R.
 We read the matrix and create a new column `region` that denotes the genomic coordinates of each region.
 Next, we pivot the matrix from the long table format into a standard cell × region format.
 Here we chose to use the shrunken residuals as our measure of methylation.
 Finally, we transform the dataframe into a matrix.
 
-```
+```r
 library(tidyverse)
 library(irlba)
 
@@ -158,13 +165,20 @@ pca$x %>%
   geom_point() +
   coord_fixed()
 ```
-![A PCA of the methylation matrix that reveals three groups of cells](tutorial_PCA.png)
+
+<img src="tutorial_PCA.png" width="300" height="300">
+
+Of course you can also use PCA on the promoter methylation matrix instead of the MVR matrix by simply loading `promoter_matrix.csv` instead of `MVR_matrix.csv`.
+This matrix yields a visually similar PCA, although the three cell types are not as cleanly separated:
+
+<img src="tutorial_PCA_promoter.png" width="300" height="300">
+
 
 
 
 ### Advanced usage
 
-#### Using stdin and stdout instead of files
+#### Using stdin and stdout
 If you want to use stdin and stdout instead of providing input/output file paths, you can use the `-` character where you would otherwise write the path to the file.
 This makes it easy to incorporate other tools such as `bedtools` into your workflows.
 For example, consider a workflow where you first want to sort your genomic input regions with `bedtools sort`, then you want to quantify methylation at these regions with `scbs matrix`, and then you want to compress the resulting matrix:
