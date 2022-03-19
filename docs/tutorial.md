@@ -154,7 +154,7 @@ We simply run our modified PCA on the centered methylation matrix...
 ```r
 pca <- meth_mtx %>%
   scale(center = T, scale = F) %>%
-  prcomp_impute(n = 5, n_iter = 5)
+  prcomp_iterative(n = 5, n_iter = 5)
 ```
 
 ...and then plot the PCA, revealing three cell types with distinct methylomes:
