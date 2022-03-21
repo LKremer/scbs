@@ -5,6 +5,7 @@ import gzip
 import sys
 import os
 import scipy.sparse as sp_sparse
+from scbs.io import read_sparse_hdf5, read_chromosome
 from statsmodels.stats.proportion import proportion_confint
 
 
@@ -105,7 +106,7 @@ def _parse_cell_names(data_dir):
     return cell_names
 
 
-def _load_chrom_mat(data_dir, chrom):
+def _load_chrom_mat_npz(data_dir, chrom):
     mat_path = os.path.join(data_dir, f"{chrom}.npz")
     echo(f"loading chromosome {chrom} from {mat_path} ...")
     try:
@@ -114,6 +115,21 @@ def _load_chrom_mat(data_dir, chrom):
         secho("Warning: ", fg="red", nl=False)
         echo(
             f"Couldn't load methylation data for chromosome {chrom} from {mat_path}. "
+            f"Regions on chromosome {chrom} will not be considered."
+        )
+        mat = None
+    return mat
+
+
+def _load_chrom_mat(data_dir, chrom, filename="scbs.hdf5"):
+    hdf5file = os.path.join(data_dir, filename)
+    echo(f"loading chromosome {chrom} from {hdf5file} ...")
+    try:
+        mat = read_chromosome(hdf5file, chrom)
+    except FileNotFoundError:
+        secho("Warning: ", fg="red", nl=False)
+        echo(
+            f"Couldn't load methylation data for chromosome {chrom} from {hdf5file}. "
             f"Regions on chromosome {chrom} will not be considered."
         )
         mat = None
