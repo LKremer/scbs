@@ -58,15 +58,19 @@ def _set_n_threads(ctx, param, value):
     help_headers_color="bright_white",
     help_options_color="green",
     help=f"""
-        This is {style("scbs version " + scbs.__version__, fg="bright_white")}
+        \b
+                    |         
+        ,---. ,---. |---. ,---. {style("version " + scbs.__version__, fg="green")}
+        `---. |     |   | `---.
+        `---' `---' `---' `---' 
 
         Below you find a list of all available commands.
         To find out what they do and how to use them, check
         their help like this:
 
-        {style("scbs profile --help", fg="blue")}
+        {style("scbs [subcommand] --help", fg="blue")}
 
-        To use stdin or stdout, use the character
+        To use stdin or stdout, use the dash character
         {style("-", fg="blue")} instead of a file path.
         """,
 )

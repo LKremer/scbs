@@ -102,6 +102,7 @@ def _move_windows(
 #             n_cells += 1
 #     return n_cells
 
+
 def scan(data_dir, output, bandwidth, stepsize, var_threshold, threads=-1):
     if threads != -1:
         numba.set_num_threads(threads)
@@ -232,6 +233,7 @@ def reduce(
     from umap import UMAP
     from sklearn.decomposition import PCA
     from sklearn.preprocessing import scale
+
     if isinstance(matrix, str):
         df = pd.read_csv(matrix, header=0)
     elif isinstance(matrix, pd.core.frame.DataFrame):

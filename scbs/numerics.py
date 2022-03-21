@@ -2,7 +2,6 @@ from numba import njit, prange
 import numpy as np
 
 
-
 @njit(nogil=True)
 def _calc_mean_shrunken_residuals(
     data_chrom,
