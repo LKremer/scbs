@@ -166,7 +166,7 @@ def _write_summary_stats(data_dir, cell_names, n_obs, n_meth):
     return out_path
 
 
-class CoverageFormat():
+class CoverageFormat:
     """Describes the columns in the coverage file."""
 
     def __init__(self, chrom, pos, meth, umeth, coverage, sep, header):
@@ -180,8 +180,15 @@ class CoverageFormat():
 
     def totuple(self):
         """Transform to use it in non-refactored code for now."""
-        return (self.chrom, self.pos, self.meth, self.umeth, self.cov,
-                self.sep, self.header)
+        return (
+            self.chrom,
+            self.pos,
+            self.meth,
+            self.umeth,
+            self.cov,
+            self.sep,
+            self.header,
+        )
 
 
 def create_custom_format(format_string):
@@ -214,9 +221,25 @@ def create_custom_format(format_string):
 def create_standard_format(format_name):
     """Create a format object on the basis of the format name."""
     if format_name in ("bismarck", "bismark"):
-        return CoverageFormat(0, 1, 4, 5, False, "\t", False,)
+        return CoverageFormat(
+            0,
+            1,
+            4,
+            5,
+            False,
+            "\t",
+            False,
+        )
     elif format_name in ("allc", "methylpy"):
-        return CoverageFormat(0, 1, 4, 5, True, "\t", True,)
+        return CoverageFormat(
+            0,
+            1,
+            4,
+            5,
+            True,
+            "\t",
+            True,
+        )
     else:
         raise Exception(f"{format_name} is not a known format")
 
@@ -261,4 +284,3 @@ def _line_to_values(line, c_col, p_col, m_col, u_col, coverage):
     else:
         n_unmeth = int(line[u_col])
     return chrom, pos, n_meth, n_unmeth
-

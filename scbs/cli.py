@@ -1,15 +1,15 @@
-import scbs
-import click
 import numba
+import click
 from click import style
-from datetime import datetime, timedelta
-from scbs.scbs import scan, echo
-from .utils import _get_filepath
-from scbs.prepare import prepare
-from scbs.profile import profile
-from scbs.smooth import smooth
-from scbs.matrix import matrix
 from click_help_colors import HelpColorsGroup
+from datetime import datetime, timedelta
+from .scbs import scan, echo
+from .utils import _get_filepath
+from .prepare import prepare
+from .profile import profile
+from .smooth import smooth
+from .matrix import matrix
+from . import __version__
 
 
 class Timer(object):
@@ -58,7 +58,7 @@ def _set_n_threads(ctx, param, value):
     help_headers_color="bright_white",
     help_options_color="green",
     help=f"""
-        This is {style("scbs version " + scbs.__version__, fg="bright_white")}
+        This is {style("scbs version " + __version__, fg="bright_white")}
 
         Below you find a list of all available commands.
         To find out what they do and how to use them, check

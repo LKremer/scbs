@@ -1,8 +1,6 @@
 import click
 import pandas as pd
 import numpy as np
-import gzip
-import sys
 import os
 import scipy.sparse as sp_sparse
 from statsmodels.stats.proportion import proportion_confint

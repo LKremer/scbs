@@ -1,6 +1,13 @@
 import numpy as np
-from .utils import (_iter_bed, echo, secho, _load_chrom_mat, _get_filepath,
-                    _parse_cell_names, _write_profile)
+from .utils import (
+    _iter_bed,
+    echo,
+    secho,
+    _load_chrom_mat,
+    _get_filepath,
+    _parse_cell_names,
+    _write_profile,
+)
 
 
 def profile(data_dir, regions, output, width, strand_column, label):
@@ -100,7 +107,6 @@ def profile(data_dir, regions, output, width, strand_column, label):
     # write final output file of binned methylation fractions
     _write_profile(output, n_meth_global, n_non_na_global, cell_names, extend_by, label)
     return
-
 
 
 def _redefine_bed_regions(start, end, extend_by):
