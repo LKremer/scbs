@@ -59,10 +59,11 @@ def _set_n_threads(ctx, param, value):
     help_options_color="green",
     help=f"""
         \b
-                    |         
-        ,---. ,---. |---. ,---. {style("version " + scbs.__version__, fg="green")}
-        `---. |     |   | `---.
-        `---' `---' `---' `---' 
+                    {style("|", fg="blue")}
+        {style(",---. ,---. |---. ,---.", fg="blue")} \
+{style("version " + scbs.__version__, fg="green")}
+        {style("`---. |     |   | `---.", fg="blue")}
+        {style("`---' `---' `---' `---'", fg="blue")}
 
         Below you find a list of all available commands.
         To find out what they do and how to use them, check
