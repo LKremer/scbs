@@ -10,6 +10,7 @@ from .prepare import prepare
 from .profile import profile
 from .smooth import smooth
 from .matrix import matrix
+from .filter import filter_
 from . import __version__
 
 
@@ -232,6 +233,8 @@ def smooth_cli(**kwargs):
     "--var-threshold",
     default=0.02,
     show_default=True,
+    type=click.FloatRange(min=0, max=1),
+    metavar="FLOAT",
     help="The variance threshold, i.e. 0.02 means that the top 2% "
     "most variable genomic bins will be reported. Overlapping variable bins "
     "are merged.",
@@ -350,8 +353,75 @@ def profile_cli(**kwargs):
     timer.stop()
 
 
+# filter command
+@cli.command(
+    name="filter",
+    help=f"""
+    Filters low-quality cells based on the number of observed methylation sites
+    and/or the global methylation percentage.
+
+    Alternatively, you may also provide a text file with the names of the cells you
+    want to keep.
+
+    {style("DATA_DIR", fg="green")} is the unfiltered directory containing the
+    methylation matrices produced by running 'scbs prepare'.
+
+    {style("FILTERED_DIR", fg="green")} is the output directory storing methylation
+    data only for the cells that passed all filtering criteria.
+    """,
+    short_help="Filter low-quality cells based on coverage and mean methylation",
+    no_args_is_help=True,
+)
+@click.argument(
+    "data-dir",
+    type=click.Path(exists=True, dir_okay=True, file_okay=False, readable=True),
+)
+@click.argument(
+    "filtered-dir",
+    type=click.Path(dir_okay=True, file_okay=False, writable=True),
+)
+@click.option(
+    "--min-sites",
+    type=click.IntRange(min=1),
+    metavar="INTEGER",
+    help="Minimum number of methylation sites required for a cell to pass filtering.",
+)
+@click.option(
+    "--max-sites",
+    type=click.IntRange(min=1),
+    metavar="INTEGER",
+    help="Maximum number of methylation sites required for a cell to pass filtering.",
+)
+@click.option(
+    "--min-meth",
+    type=click.FloatRange(min=0, max=100),
+    metavar="PERCENT",
+    help="Minimum average methylation percentage required for a cell to "
+    "pass filtering.",
+)
+@click.option(
+    "--max-meth",
+    type=click.FloatRange(min=0, max=100),
+    metavar="PERCENT",
+    help="Maximum average methylation percentage required for a cell to "
+    "pass filtering.",
+)
+@click.option(
+    "--keep",
+    type=click.File("r"),
+    help="A text file with the names of the cells you want to keep. "
+    "This is an alternative to the min/max filtering options. Each cell name "
+    "must be on a new line.",
+)
+def filter_cli(**kwargs):
+    timer = Timer(label="filter")
+    _print_kwargs(kwargs)
+    filter_(**kwargs)
+    timer.stop()
+
+
 # CLI template:
-# @click.command(
+# @cli.command(
 #     help=f"""
 #     Blabla
 
@@ -360,6 +430,7 @@ def profile_cli(**kwargs):
 #     {style("OUTPUT", fg="green")} blabla
 #     """,
 #     short_help="template for dev",
+#     no_args_is_help=True,
 # )
 # @click.argument("input", type=click.File("r"))
 # @click.argument("output", type=click.File("w"))
@@ -370,7 +441,3 @@ def profile_cli(**kwargs):
 #     _print_kwargs(kwargs)
 #     print(**kwargs)
 #     timer.stop()
-
-
-# cli.add_command(matrix_cli, name="matrix")
-# cli.add_command(profile_cli, name="profile")
