@@ -2,9 +2,9 @@ import numpy as np
 import gzip
 import os
 import scipy.sparse as sp_sparse
-from .utils import echo, secho
 import sys
 import pandas as pd
+from .utils import echo, secho
 
 
 def prepare(input_files, data_dir, input_format):

@@ -7,9 +7,8 @@ class MockFile():
 
 
 def test_get_cell_name():
-    good_files = [MockFile("dir/a.csv"), MockFile("dir/b.csv.gz")]
-    x = _get_cell_names(good_files)
-    assert ["a", "b"] == x
+    f = [MockFile("dir/a.csv"), MockFile("/dir/dir2/b.csv.gz")]
+    assert _get_cell_names(f) == ["a", "b"]
 
 
 def test_coverage_format_creation():
@@ -18,4 +17,3 @@ def test_coverage_format_creation():
     assert _human_to_computer("1:2:3:4c:\\t:1") == (0, 1, 2, 3, True, "\t", True,)
     assert _human_to_computer("1:2:3:4m:\\t:1") == (0, 1, 2, 3, False, "\t", True,)
     assert _human_to_computer("1:2:3:4m:\\t:0") == (0, 1, 2, 3, False, "\t", False,)
-

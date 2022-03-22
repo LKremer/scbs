@@ -1,8 +1,8 @@
 import numpy as np
 from .utils import (
-    _iter_bed,
     echo,
     secho,
+    _iter_bed,
     _load_chrom_mat,
     _get_filepath,
     _parse_cell_names,

@@ -1,15 +1,17 @@
-import scbs
-import click
 import numba
-from click import style
+import click
 from datetime import datetime, timedelta
-from scbs.scbs import scan, echo
-from .utils import _get_filepath
-from scbs.prepare import prepare
-from scbs.profile import profile
-from scbs.smooth import smooth
-from scbs.matrix import matrix
+from collections import OrderedDict
+from click import style
 from click_help_colors import HelpColorsGroup
+from .scbs import scan, echo
+from .utils import _get_filepath
+from .prepare import prepare
+from .profile import profile
+from .smooth import smooth
+from .matrix import matrix
+from .filter import filter_
+from . import __version__
 
 
 class Timer(object):
@@ -28,6 +30,15 @@ class Timer(object):
             f"Total runtime was {runtime} (hour:min:s)."
         )
         return
+
+
+class OrderedGroup(HelpColorsGroup):
+    def __init__(self, commands=None, *args, **kwargs):
+        super(OrderedGroup, self).__init__(*args, **kwargs)
+        self.commands = commands or OrderedDict()
+
+    def list_commands(self, ctx):
+        return self.commands
 
 
 def _print_kwargs(kwargs):
@@ -54,7 +65,7 @@ def _set_n_threads(ctx, param, value):
 
 # command group
 @click.group(
-    cls=HelpColorsGroup,
+    cls=OrderedGroup,
     help_headers_color="bright_white",
     help_options_color="green",
     help=f"""
@@ -99,7 +110,7 @@ def cli():
     error, you need to increase the open file limit with e.g.
     'ulimit -n 9999'.
     """,
-    short_help="First step: Collect and store sc-methylation data for quick access",
+    short_help="Collect and store sc-methylation data for quick access",
     no_args_is_help=True,
 )
 @click.argument("input-files", type=click.File("rb"), nargs=-1)
@@ -137,6 +148,153 @@ def prepare_cli(**kwargs):
     timer = Timer(label="prepare")
     _print_kwargs(kwargs)
     prepare(**kwargs)
+    timer.stop()
+
+
+# smooth command
+@cli.command(
+    name="smooth",
+    help=f"""
+    This script will calculate the smoothed mean methylation over the
+    whole genome.
+
+    {style("DATA_DIR", fg="green")} is the directory containing the methylation matrices
+    produced by running 'scbs prepare'.
+
+    The smoothed methylation values will be written to
+    {style("DATA_DIR/smoothed/", fg="green")}.
+    """,
+    short_help="Smooth the pseudobulk of single cell methylation data",
+    no_args_is_help=True,
+)
+@click.argument(
+    "data-dir",
+    type=click.Path(
+        exists=True, dir_okay=True, file_okay=False, readable=True, writable=True
+    ),
+)
+@click.option(
+    "-bw",
+    "--bandwidth",
+    default=1000,
+    type=click.IntRange(min=1, max=1e6),
+    metavar="INTEGER",
+    show_default=True,
+    help="Smoothing bandwidth in basepairs.",
+)
+@click.option(
+    "--use-weights",
+    is_flag=True,
+    help="Use this to weigh each methylation site by log1p(coverage).",
+)
+def smooth_cli(**kwargs):
+    timer = Timer(label="smooth")
+    _print_kwargs(kwargs)
+    smooth(**kwargs)
+    timer.stop()
+
+
+# scan command
+@cli.command(
+    name="scan",
+    help=f"""
+    Scans the whole genome for regions of variable methylation. This works by sliding
+    a window across the genome, calculating the variance of methylation per window,
+    and selecting windows above a variance threshold.
+
+    {style("DATA_DIR", fg="green")} is the directory containing the methylation
+    matrices produced by running 'scbs prepare', as well as the smoothed methylation
+    values produced by running 'scbs smooth'.
+
+    {style("OUTPUT", fg="green")} is the path of the output file in '.bed' format,
+    containing the variable windows that were found.
+    """,
+    short_help="Scan the genome to discover regions with variable methylation",
+    no_args_is_help=True,
+)
+@click.argument(
+    "data-dir",
+    type=click.Path(exists=True, dir_okay=True, file_okay=False, readable=True),
+)
+@click.argument("output", type=click.File("w"))
+@click.option(
+    "-bw",
+    "--bandwidth",
+    default=2000,
+    type=click.IntRange(min=1, max=1e6),
+    metavar="INTEGER",
+    show_default=True,
+    help="Bandwidth of the variance windows in basepairs.",
+)
+@click.option(
+    "--stepsize",
+    default=10,
+    type=click.IntRange(min=1, max=1e6),
+    metavar="INTEGER",
+    show_default=True,
+    help="Step size of the variance windows in basepairs.",
+)
+@click.option(
+    "--var-threshold",
+    default=0.02,
+    show_default=True,
+    type=click.FloatRange(min=0, max=1),
+    metavar="FLOAT",
+    help="The variance threshold, i.e. 0.02 means that the top 2% "
+    "most variable genomic bins will be reported. Overlapping variable bins "
+    "are merged.",
+)
+@click.option(
+    "--threads",
+    default=-1,
+    help="How many CPU threads to use in parallel.  [default: all available]",
+    callback=_set_n_threads,
+)
+def scan_cli(**kwargs):
+    timer = Timer(label="scan")
+    _print_kwargs(kwargs)
+    scan(**kwargs)
+    timer.stop()
+
+
+# matrix command (makes a "count" matrix)
+@cli.command(
+    name="matrix",
+    help=f"""
+    From single cell methylation or NOMe-seq data, calculates the average methylation
+    in genomic regions for every cell. The output is a long table that can be used e.g.
+    for dimensionality reduction or clustering, analogous to a count matrix in
+    scRNA-seq.
+
+    {style("REGIONS", fg="green")} is an alphabetically sorted (!) .bed file of regions
+    for which methylation will be quantified in every cell.
+
+    {style("DATA_DIR", fg="green")} is the directory containing the methylation
+    matrices produced by running 'scbs prepare', as well as the smoothed methylation
+    values produced by running 'scbs smooth'.
+
+    {style("OUTPUT", fg="green")} is the file path where the count table will be
+    written. Should end with '.csv'. The table is in long format and missing values
+    are omitted.
+    """,
+    short_help="Make a methylation matrix, similar to a count matrix in scRNA-seq",
+    no_args_is_help=True,
+)
+@click.argument("regions", type=click.File("r"))
+@click.argument(
+    "data-dir",
+    type=click.Path(exists=True, dir_okay=True, file_okay=False, readable=True),
+)
+@click.argument("output", type=click.File("w"))
+@click.option(
+    "--keep-other-columns",
+    is_flag=True,
+    help="Use this to keep any other columns that the input bed-file may contain.",
+)
+def matrix_cli(**kwargs):
+    timer = Timer(label="matrix")
+    _print_kwargs(kwargs)
+    matrix(**kwargs)
     timer.stop()
 
 
@@ -200,153 +358,75 @@ def profile_cli(**kwargs):
     timer.stop()
 
 
-# smooth command
+# filter command
 @cli.command(
-    name="smooth",
+    name="filter",
     help=f"""
-    This script will calculate the smoothed mean methylation over the
-    whole genome.
+    Filters low-quality cells based on the number of observed methylation sites
+    and/or the global methylation percentage.
 
-    {style("DATA_DIR", fg="green")} is the directory containing the methylation matrices
-    produced by running 'scbs prepare'.
+    Alternatively, you may also provide a text file with the names of the cells you
+    want to keep.
 
-    The smoothed methylation values will be written to
-    {style("DATA_DIR/smoothed/", fg="green")}.
+    {style("DATA_DIR", fg="green")} is the unfiltered directory containing the
+    methylation matrices produced by running 'scbs prepare'.
+
+    {style("FILTERED_DIR", fg="green")} is the output directory storing methylation
+    data only for the cells that passed all filtering criteria.
     """,
-    short_help="Smooth the pseudobulk of single cell methylation data",
-    no_args_is_help=True,
-)
-@click.argument(
-    "data-dir",
-    type=click.Path(
-        exists=True, dir_okay=True, file_okay=False, readable=True, writable=True
-    ),
-)
-@click.option(
-    "-bw",
-    "--bandwidth",
-    default=1000,
-    type=click.IntRange(min=1, max=1e6),
-    metavar="INTEGER",
-    show_default=True,
-    help="Smoothing bandwidth in basepairs.",
-)
-@click.option(
-    "--use-weights",
-    is_flag=True,
-    help="Use this to weigh each methylation site by log1p(coverage).",
-)
-def smooth_cli(**kwargs):
-    timer = Timer(label="smooth")
-    _print_kwargs(kwargs)
-    smooth(**kwargs)
-    timer.stop()
-
-
-# matrix command (makes a "count" matrix)
-@cli.command(
-    name="matrix",
-    help=f"""
-    From single cell methylation or NOMe-seq data, calculates the average methylation
-    in genomic regions for every cell. The output is a long table that can be used e.g.
-    for dimensionality reduction or clustering, analogous to a count matrix in
-    scRNA-seq.
-
-    {style("REGIONS", fg="green")} is an alphabetically sorted (!) .bed file of regions
-    for which methylation will be quantified in every cell.
-
-    {style("DATA_DIR", fg="green")} is the directory containing the methylation
-    matrices produced by running 'scbs prepare', as well as the smoothed methylation
-    values produced by running 'scbs smooth'.
-
-    {style("OUTPUT", fg="green")} is the file path where the count table will be
-    written. Should end with '.csv'. The table is in long format and missing values
-    are omitted.
-    """,
-    short_help="Make a methylation matrix, similar to a count matrix in scRNA-seq",
-    no_args_is_help=True,
-)
-@click.argument("regions", type=click.File("r"))
-@click.argument(
-    "data-dir",
-    type=click.Path(exists=True, dir_okay=True, file_okay=False, readable=True),
-)
-@click.argument("output", type=click.File("w"))
-@click.option(
-    "--keep-other-columns",
-    is_flag=True,
-    help="Use this to keep any other columns that the input bed-file may contain.",
-)
-def matrix_cli(**kwargs):
-    timer = Timer(label="matrix")
-    _print_kwargs(kwargs)
-    matrix(**kwargs)
-    timer.stop()
-
-
-# scan command
-@cli.command(
-    name="scan",
-    help=f"""
-    Scans the whole genome for regions of variable methylation. This works by sliding
-    a window across the genome, calculating the variance of methylation per window,
-    and selecting windows above a variance threshold.
-
-    {style("DATA_DIR", fg="green")} is the directory containing the methylation
-    matrices produced by running 'scbs prepare', as well as the smoothed methylation
-    values produced by running 'scbs smooth'.
-
-    {style("OUTPUT", fg="green")} is the path of the output file in '.bed' format,
-    containing the variable windows that were found.
-    """,
-    short_help="Scan the genome to discover regions with variable methylation",
+    short_help="Filter low-quality cells based on coverage and mean methylation",
     no_args_is_help=True,
 )
 @click.argument(
     "data-dir",
     type=click.Path(exists=True, dir_okay=True, file_okay=False, readable=True),
 )
-@click.argument("output", type=click.File("w"))
+@click.argument(
+    "filtered-dir",
+    type=click.Path(dir_okay=True, file_okay=False, writable=True),
+)
 @click.option(
-    "-bw",
-    "--bandwidth",
-    default=2000,
-    type=click.IntRange(min=1, max=1e6),
+    "--min-sites",
+    type=click.IntRange(min=1),
     metavar="INTEGER",
-    show_default=True,
-    help="Bandwidth of the variance windows in basepairs.",
+    help="Minimum number of methylation sites required for a cell to pass filtering.",
 )
 @click.option(
-    "--stepsize",
-    default=10,
-    type=click.IntRange(min=1, max=1e6),
+    "--max-sites",
+    type=click.IntRange(min=1),
     metavar="INTEGER",
-    show_default=True,
-    help="Step size of the variance windows in basepairs.",
+    help="Maximum number of methylation sites required for a cell to pass filtering.",
 )
 @click.option(
-    "--var-threshold",
-    default=0.02,
-    show_default=True,
-    help="The variance threshold, i.e. 0.02 means that the top 2% "
-    "most variable genomic bins will be reported. Overlapping variable bins "
-    "are merged.",
+    "--min-meth",
+    type=click.FloatRange(min=0, max=100),
+    metavar="PERCENT",
+    help="Minimum average methylation percentage required for a cell to "
+    "pass filtering.",
 )
 @click.option(
-    "--threads",
-    default=-1,
-    help="How many CPU threads to use in parallel.  [default: all available]",
-    callback=_set_n_threads,
+    "--max-meth",
+    type=click.FloatRange(min=0, max=100),
+    metavar="PERCENT",
+    help="Maximum average methylation percentage required for a cell to "
+    "pass filtering.",
 )
-def scan_cli(**kwargs):
-    timer = Timer(label="scan")
+@click.option(
+    "--keep",
+    type=click.File("r"),
+    help="A text file with the names of the cells you want to keep. "
+    "This is an alternative to the min/max filtering options. Each cell name "
+    "must be on a new line.",
+)
+def filter_cli(**kwargs):
+    timer = Timer(label="filter")
     _print_kwargs(kwargs)
-    scan(**kwargs)
+    filter_(**kwargs)
     timer.stop()
 
 
 # CLI template:
-# @click.command(
+# @cli.command(
 #     help=f"""
 #     Blabla
 
@@ -355,6 +435,7 @@ def scan_cli(**kwargs):
 #     {style("OUTPUT", fg="green")} blabla
 #     """,
 #     short_help="template for dev",
+#     no_args_is_help=True,
 # )
 # @click.argument("input", type=click.File("r"))
 # @click.argument("output", type=click.File("w"))
@@ -365,7 +446,3 @@ def scan_cli(**kwargs):
 #     _print_kwargs(kwargs)
 #     print(**kwargs)
 #     timer.stop()
-
-
-# cli.add_command(matrix_cli, name="matrix")
-# cli.add_command(profile_cli, name="profile")
