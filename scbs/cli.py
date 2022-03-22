@@ -1,8 +1,9 @@
 import numba
 import click
+from datetime import datetime, timedelta
+from collections import OrderedDict
 from click import style
 from click_help_colors import HelpColorsGroup
-from datetime import datetime, timedelta
 from .scbs import scan, echo
 from .utils import _get_filepath
 from .prepare import prepare
@@ -30,6 +31,15 @@ class Timer(object):
         return
 
 
+class OrderedGroup(HelpColorsGroup):
+    def __init__(self, commands=None, *args, **kwargs):
+        super(OrderedGroup, self).__init__(*args, **kwargs)
+        self.commands = commands or OrderedDict()
+
+    def list_commands(self, ctx):
+        return self.commands
+
+
 def _print_kwargs(kwargs):
     echo("\nCommand line arguments:")
     for arg, value in kwargs.items():
@@ -54,7 +64,7 @@ def _set_n_threads(ctx, param, value):
 
 # command group
 @click.group(
-    cls=HelpColorsGroup,
+    cls=OrderedGroup,
     help_headers_color="bright_white",
     help_options_color="green",
     help=f"""
@@ -66,7 +76,7 @@ def _set_n_threads(ctx, param, value):
 
         {style("scbs profile --help", fg="blue")}
 
-        To use stdin or stdout, use the character
+        To use stdin or stdout, use the dash character
         {style("-", fg="blue")} instead of a file path.
         """,
 )
@@ -94,7 +104,7 @@ def cli():
     error, you need to increase the open file limit with e.g.
     'ulimit -n 9999'.
     """,
-    short_help="First step: Collect and store sc-methylation data for quick access",
+    short_help="Collect and store sc-methylation data for quick access",
     no_args_is_help=True,
 )
 @click.argument("input-files", type=click.File("rb"), nargs=-1)
@@ -132,66 +142,6 @@ def prepare_cli(**kwargs):
     timer = Timer(label="prepare")
     _print_kwargs(kwargs)
     prepare(**kwargs)
-    timer.stop()
-
-
-# profile command
-@cli.command(
-    name="profile",
-    help=f"""
-    From single cell methylation or NOMe-seq data,
-    calculates the average methylation profile of a set of
-    genomic regions. Useful for plotting and visually comparing
-    methylation between groups of regions or cells.
-
-    {style("REGIONS", fg="green")} is an alphabetically sorted (!) .bed file of regions
-    for which the methylation profile will be produced.
-
-    {style("DATA_DIR", fg="green")} is the directory containing the methylation matrices
-    produced by running 'scbs prepare'.
-
-    {style("OUTPUT", fg="green")} is the file path where the methylation profile data
-    will be written. Should end with '.csv'.
-    """,
-    short_help="Plot mean methylation around a group of genomic features",
-    no_args_is_help=True,
-)
-@click.argument("regions", type=click.File("r"))
-@click.argument(
-    "data-dir",
-    type=click.Path(exists=True, dir_okay=True, file_okay=False, readable=True),
-)
-@click.argument("output", type=click.File("w"))
-@click.option(
-    "--width",
-    default=4000,
-    show_default=True,
-    type=click.IntRange(min=1, max=None),
-    metavar="INTEGER",
-    help="The total width of the profile plot in bp. "
-    "The center of all bed regions will be "
-    "extended in both directions by half of this amount. "
-    "Shorter regions will be extended, longer regions "
-    "will be shortened accordingly.",
-)
-@click.option(
-    "--strand-column",
-    type=click.IntRange(min=1, max=None),
-    metavar="INTEGER",
-    help="The bed column number (1-indexed) denoting "
-    "the DNA strand of the region  [optional].",
-)
-@click.option(
-    "--label",
-    help="Specify a constant value to be added as a "
-    "column to the output table. This can be "
-    "useful to give each output a unique label when "
-    "you want to concatenate multiple outputs  [optional].",
-)
-def profile_cli(**kwargs):
-    timer = Timer(label="profile")
-    _print_kwargs(kwargs)
-    profile(**kwargs)
     timer.stop()
 
 
@@ -235,47 +185,6 @@ def smooth_cli(**kwargs):
     timer = Timer(label="smooth")
     _print_kwargs(kwargs)
     smooth(**kwargs)
-    timer.stop()
-
-
-# matrix command (makes a "count" matrix)
-@cli.command(
-    name="matrix",
-    help=f"""
-    From single cell methylation or NOMe-seq data, calculates the average methylation
-    in genomic regions for every cell. The output is a long table that can be used e.g.
-    for dimensionality reduction or clustering, analogous to a count matrix in
-    scRNA-seq.
-
-    {style("REGIONS", fg="green")} is an alphabetically sorted (!) .bed file of regions
-    for which methylation will be quantified in every cell.
-
-    {style("DATA_DIR", fg="green")} is the directory containing the methylation
-    matrices produced by running 'scbs prepare', as well as the smoothed methylation
-    values produced by running 'scbs smooth'.
-
-    {style("OUTPUT", fg="green")} is the file path where the count table will be
-    written. Should end with '.csv'. The table is in long format and missing values
-    are omitted.
-    """,
-    short_help="Make a methylation matrix, similar to a count matrix in scRNA-seq",
-    no_args_is_help=True,
-)
-@click.argument("regions", type=click.File("r"))
-@click.argument(
-    "data-dir",
-    type=click.Path(exists=True, dir_okay=True, file_okay=False, readable=True),
-)
-@click.argument("output", type=click.File("w"))
-@click.option(
-    "--keep-other-columns",
-    is_flag=True,
-    help="Use this to keep any other columns that the input bed-file may contain.",
-)
-def matrix_cli(**kwargs):
-    timer = Timer(label="matrix")
-    _print_kwargs(kwargs)
-    matrix(**kwargs)
     timer.stop()
 
 
@@ -337,6 +246,107 @@ def scan_cli(**kwargs):
     timer = Timer(label="scan")
     _print_kwargs(kwargs)
     scan(**kwargs)
+    timer.stop()
+
+
+# matrix command (makes a "count" matrix)
+@cli.command(
+    name="matrix",
+    help=f"""
+    From single cell methylation or NOMe-seq data, calculates the average methylation
+    in genomic regions for every cell. The output is a long table that can be used e.g.
+    for dimensionality reduction or clustering, analogous to a count matrix in
+    scRNA-seq.
+
+    {style("REGIONS", fg="green")} is an alphabetically sorted (!) .bed file of regions
+    for which methylation will be quantified in every cell.
+
+    {style("DATA_DIR", fg="green")} is the directory containing the methylation
+    matrices produced by running 'scbs prepare', as well as the smoothed methylation
+    values produced by running 'scbs smooth'.
+
+    {style("OUTPUT", fg="green")} is the file path where the count table will be
+    written. Should end with '.csv'. The table is in long format and missing values
+    are omitted.
+    """,
+    short_help="Make a methylation matrix, similar to a count matrix in scRNA-seq",
+    no_args_is_help=True,
+)
+@click.argument("regions", type=click.File("r"))
+@click.argument(
+    "data-dir",
+    type=click.Path(exists=True, dir_okay=True, file_okay=False, readable=True),
+)
+@click.argument("output", type=click.File("w"))
+@click.option(
+    "--keep-other-columns",
+    is_flag=True,
+    help="Use this to keep any other columns that the input bed-file may contain.",
+)
+def matrix_cli(**kwargs):
+    timer = Timer(label="matrix")
+    _print_kwargs(kwargs)
+    matrix(**kwargs)
+    timer.stop()
+
+
+# profile command
+@cli.command(
+    name="profile",
+    help=f"""
+    From single cell methylation or NOMe-seq data,
+    calculates the average methylation profile of a set of
+    genomic regions. Useful for plotting and visually comparing
+    methylation between groups of regions or cells.
+
+    {style("REGIONS", fg="green")} is an alphabetically sorted (!) .bed file of regions
+    for which the methylation profile will be produced.
+
+    {style("DATA_DIR", fg="green")} is the directory containing the methylation matrices
+    produced by running 'scbs prepare'.
+
+    {style("OUTPUT", fg="green")} is the file path where the methylation profile data
+    will be written. Should end with '.csv'.
+    """,
+    short_help="Plot mean methylation around a group of genomic features",
+    no_args_is_help=True,
+)
+@click.argument("regions", type=click.File("r"))
+@click.argument(
+    "data-dir",
+    type=click.Path(exists=True, dir_okay=True, file_okay=False, readable=True),
+)
+@click.argument("output", type=click.File("w"))
+@click.option(
+    "--width",
+    default=4000,
+    show_default=True,
+    type=click.IntRange(min=1, max=None),
+    metavar="INTEGER",
+    help="The total width of the profile plot in bp. "
+    "The center of all bed regions will be "
+    "extended in both directions by half of this amount. "
+    "Shorter regions will be extended, longer regions "
+    "will be shortened accordingly.",
+)
+@click.option(
+    "--strand-column",
+    type=click.IntRange(min=1, max=None),
+    metavar="INTEGER",
+    help="The bed column number (1-indexed) denoting "
+    "the DNA strand of the region  [optional].",
+)
+@click.option(
+    "--label",
+    help="Specify a constant value to be added as a "
+    "column to the output table. This can be "
+    "useful to give each output a unique label when "
+    "you want to concatenate multiple outputs  [optional].",
+)
+def profile_cli(**kwargs):
+    timer = Timer(label="profile")
+    _print_kwargs(kwargs)
+    profile(**kwargs)
     timer.stop()
 
 
