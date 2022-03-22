@@ -72,7 +72,7 @@ def _set_n_threads(ctx, param, value):
         \b
                     {style("|", fg="blue")}
         {style(",---. ,---. |---. ,---.", fg="blue")} \
-{style("version " + scbs.__version__, fg="green")}
+{style("version " + __version__, fg="green")}
         {style("`---. |     |   | `---.", fg="blue")}
         {style("`---' `---' `---' `---'", fg="blue")}
 
