@@ -419,9 +419,11 @@ def profile_cli(**kwargs):
     "This is an alternative to the min/max filtering options. Each cell name "
     "must be on a new line.",
 )
-@click.option("--keep/--discard", default=True,
+@click.option(
+    "--keep/--discard",
+    default=True,
     help="Specify whether the cells listed in your text file should be kept (default) "
-    "or discarded from the data set. Only use together with --cell-names."
+    "or discarded from the data set. Only use together with --cell-names.",
 )
 def filter_cli(**kwargs):
     timer = Timer(label="filter")

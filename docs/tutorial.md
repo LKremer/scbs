@@ -9,9 +9,10 @@ For example, use `scbs prepare --help` to learn how to use the `prepare` command
 
 A typical `scbs` workflow consists of the following steps which will be explained in the course of this tutorial:
 1. use `scbs prepare` to store single-cell methylation data in an efficient format
-2. use `scbs scan` to discover methylation-variable regions in the genome, or alternatively provide your own regions of interest
-3. use `scbs matrix` to receive a matrix analogous to the count matrix in scRNA-seq
-4. use the matrix for downstream analysis such as dimensionality reduction and clustering
+2. use `scbs filter` to filter low-quality cells
+3. use `scbs scan` to discover methylation-variable regions in the genome, or alternatively provide your own regions of interest
+4. use `scbs matrix` to receive a methylation matrix analogous to the count matrix in scRNA-seq
+5. use the methylation matrix for downstream analysis such as dimensionality reduction and clustering
 
 
 ### What you will need
@@ -59,45 +60,140 @@ scbs prepare scbs_tutorial_data/*.cov compact_data
 scbs smooth compact_data
 ```
 
-This command will take all files ending in `.cov.gz` in the `scbs_tutorial_data` directory and efficiently store their methylation values in a new directory called `compact_data`.
+This command will take all files ending in `.cov` in the `scbs_tutorial_data` directory and efficiently store their methylation values in a new directory called `compact_data`.
 `scbs prepare` is the only step that requires the raw data, all other `scbs` commands work directly with `compact_data`.
 If you're working with your own data and you sequenced thousands of cells, `scbs prepare` will take quite long. But fortunately, you only have to run it once in the very beginning.
 
 
-### 2. Discovering methylation-variable regions
+### 2. Filtering low-quality cells
 
-The starting point of any single-cell RNA-seq experiment is a gene × cell (or cell × gene) count matrix that can be used for downstream analyses such as dimensionality reduction or clustering.
+Due to various technical issues such as empty wells/droplets and incomplete bisulfite conversion, every scBS experiment comes with a hopefully small number of low-quality cells.
+It is recommended to identify and remove these cells before proceeding with the analysis.
+In this tutorial we will look at three quality measures:
+1. The number of observed methylation sites (this usually depends on the read number)
+2. The global methylation percentage
+3. The average methylation profile of transcription start sites
+
+Measures 1 and 2 can be found in `compact_data/cell_stats.csv`.
+You can easily visualize these quality measures using a method of your choice.
+Here we use R:
+
+```r
+library(tidyverse)
+
+cell_stats <- read_csv("compact_data/cell_stats.csv")
+
+cell_stats %>% 
+  ggplot(aes(x = global_meth_frac * 100, y = n_obs)) +
+  geom_point() +
+  labs(x = "global DNA methylation %", y = "# of observed CpG sites")
+```
+
+<img src="tutorial_QC.png" width="300" height="300">
+
+You can clearly see that there are three outlier cells, characterized by a low number of observed CpG sites or an unusual global methylation percentage.
+Note that we're dealing with a small toy data set here, and the numbers will look quite different in a real experiment!
+
+Finally, we also inspect the average methylation profile around transcription start sites (TSS) for every cell.
+Why?
+Our tutorial data set consists of mouse cells, and it is known that DNA methylation is globally high in mouse, but low around TSS.
+Every cell that strongly deviates from this expectation is suspicous and a candidate for filtering, so we use `scbs profile` to help visualize the average methylation around TSS:
+```bash
+scbs profile --strand-column 6 scbs_tutorial_data/Mus_musculus.GRCm38.102_TSS.bed compact_data TSS_profile.csv
+```
+Again, we can use R or any other language to inspect the TSS profiles:
+```r
+profile_df <- read_csv("TSS_profile.csv") %>% 
+  mutate(position_binned = round(position, -1L)) %>% 
+  group_by(position_binned, cell_name) %>% 
+  summarise(meth_frac = mean(meth_frac)) %>% 
+  ungroup()
+
+profile_df %>% 
+  ggplot(aes(x = position_binned / 1000, y = meth_frac)) +
+  scale_y_continuous(labels=scales::percent_format(accuracy=1), limits=c(0, 1), breaks=c(0, .5, 1)) +
+  geom_line(size=.1) +
+  facet_wrap(~cell_name) +
+  labs(x = "position relative to TSS [kb]", y = "DNA methylation")
+```
+
+<img src="tutorial_tss_profiles.png" height="300">
+
+There are only two cells that have a suspicous profile.
+If you dig into the data yourself, you will find that these two cells are among the three outliers in our previous plot.
+However, in a real data set you might also discover cells that have good quality measures, but a poor TSS profile.
+Let's filter all three low-quality cells from the data set:
+```bash
+scbs filter --min-sites 60000 --min-meth 20 --max-meth 60 compact_data filtered_data
+```
+This command removes cells with less than 60,000 observed methylation sites, less than 20% global methylation, and more than 60% global methylation (these values would look very different in a real experiment).
+We can now proceed with the quality-filtered data, stored in `filtered_data`.
+
+
+### 3. Discovering methylation-variable regions
+
+The starting point of every single-cell RNA-seq analysis is a gene × cell (or cell × gene) count matrix that can be used for downstream analyses such as dimensionality reduction or clustering.
 But single-cell methylation data is genome-wide and not limited to genes, hence we need to define genomic regions of interest.
 A common strategy is to simply quantify methylation at promoters or gene bodies.
 But not all methylation differences occur at promoters or gene bodies, hence we propose to discover methylation-variable regions (MVRs) in the data itself.
-This can be achieved with `scbs scan`:
+This can be achieved with `scbs scan`.
+
+Before you can run `scbs scan` for the first time, you will need to run `scbs smooth` once.
+This command simply calculates treats all your single cells as a pseudo-bulk sample and calculates the smoothed mean methylation along the whole genome.
+This information is required for MVR detection, and later, for obtaining a methylation matrix.
 
 ```bash
-scbs scan --threads 4 compact_data MVRs.bed
+scbs smooth filtered_data
+```
+
+Now that `filtered_data` is smoothed, we can proceed with the MVR detection:
+
+```bash
+scbs scan --threads 4 filtered_data MVRs.bed
 ```
 We use the option `--threads 4` in order to run the program on 4 CPU threads in parallel. If you want to use all available threads, simply omit the `--threads` option altogether.
-The result is a [BED-file](https://en.wikipedia.org/wiki/BED_(file_format)) that lists the genomic coordinates (chromosome, start, end) of regions where methylation is variable between cells, as well as the methylation variance of the region.
+The result is a [BED-file](https://en.wikipedia.org/wiki/BED_(file_format)) that lists the genomic coordinates (chromosome, start, end) of regions where methylation is variable between cells, as well as the methylation variance of the region:
+```
+2       3194798 3197978 0.07718534715010719
+2       3379038 3381638 0.08048814475349723
+2       4295158 4299148 0.06783578568141418
+2       4443928 4446178 0.07310900984059789
+2       4544208 4546518 0.08275669639137119
+...
+```
 
 
-### 3. Getting a methylation matrix
+### 4. Getting a methylation matrix
 
 Finally, you can quantify the mean methylation of the MVRs that we just discovered using `scbs matrix`:
 ```bash
-scbs matrix MVRs.bed compact_data MVR_matrix.csv
+scbs matrix MVRs.bed filtered_data MVR_matrix.csv
 ```
 The result is a long table that lists the average methylation of all regions (here: MVRs) in all cells. We report two measures of methylation: the average methylation (`meth_frac`) and the shrunken residuals (`shrunken_residual`), which are less affected by random variations in read coverage and read positioning within the region.
+This table is currently in [narrow table format](https://en.wikipedia.org/wiki/Wide_and_narrow_data), which means that every row contains the information of one region in a specific cell:
+
+
+| chromosome | start   | end     | n_sites | n_cells | cell_name | n_meth | n_obs | meth_frac | shrunken_residual   |
+| ---------- | ------- | ------- | ------- | ------- | --------- | ------ | ----- | --------- | ------------------- |
+| 2          | 3194798 | 3197978 | 19      | 14      | cell_01   | 1      | 1     | 1.0       | 0.2733494383016978  |
+| 2          | 3194798 | 3197978 | 19      | 14      | cell_04   | 5      | 5     | 1.0       | 0.34927947513611973 |
+| 2          | 3194798 | 3197978 | 19      | 14      | cell_05   | 2      | 2     | 1.0       | 0.4367514666223647  |
+| 2          | 3194798 | 3197978 | 19      | 14      | cell_08   | 2      | 2     | 1.0       | 0.1101753329826048  |
+| 2          | 3194798 | 3197978 | 19      | 14      | cell_12   | 1      | 10    | 0.1       | -0.3877691051698608 |
+| ...        |         |         |         |         |           | 1      |       |           |                     |
+
+This methylation matrix can now be used to distinguish different cell types in the sample, perform PCA and/or UMAP, or perform clustering.
 
 If you want, you can also get a methylation matrix of specific genomic features that you are interested in.
 For example, here we quantify methylation of promoters in the mouse genome:
 ```bash
-scbs matrix scbs_tutorial_data/mouse_promoters.bed compact_data promoter_matrix.csv
+scbs matrix scbs_tutorial_data/mouse_promoters.bed filtered_data promoter_matrix.csv
 ```
 
-**(TO DO: output the data in a sane format cause long tables are too unwieldy if you have thousands of cells, then adjust the tutorial)**
 
 
 
-### 4. Downstream analysis
+### 5. Downstream analysis
 
 Now we can import our methylation matrix into a scripting language of our choice for downstream analysis.
 In this tutorial, we chose to use R.

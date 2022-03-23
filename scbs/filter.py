@@ -33,24 +33,34 @@ def _filter_by_name(file, cell_stats_path, keep=True):
 
 def _filter_by_thresholds(min_sites, max_sites, min_meth, max_meth, cell_stats_path):
     cells_to_keep_idx = []
+    counter = {"min-sites": 0, "max-sites": 0, "min-meth": 0, "max-meth": 0}
     with open(cell_stats_path, "r") as stats_csv:
         reader = DictReader(stats_csv)
         for cell_i, row in enumerate(reader):
             n_sites = int(row["n_obs"])
             meth_frac = float(row["global_meth_frac"])
             if min_sites and n_sites < min_sites:
+                counter["min-sites"] += 1
                 continue
             if max_sites and n_sites > max_sites:
+                counter["max-sites"] += 1
                 continue
             if min_meth and meth_frac < (min_meth / 100):
+                counter["min-meth"] += 1
                 continue
             if max_meth and meth_frac > (max_meth / 100):
+                counter["max-meth"] += 1
                 continue
             cells_to_keep_idx.append(cell_i)
+    for threshold, count in counter.items():
+        if count:
+            echo(f"{count} cells did not pass the --{threshold} threshold.")
     n_cells = cell_i + 1
     n_filtered = n_cells - len(cells_to_keep_idx)
     secho(
-        f"Filtering {n_filtered} of {n_cells} cells " f"({n_filtered/n_cells:.2%})..."
+        f"\nFiltering {n_filtered} of {n_cells} cells "
+        f"({n_filtered/n_cells:.2%})...\n",
+        fg="green",
     )
     return cells_to_keep_idx
 
@@ -65,7 +75,9 @@ def _filter_text_file(fpath, rows_to_keep, fpath_out, header=False):
                 outfile.write(row)
 
 
-def filter_(data_dir, filtered_dir, min_sites, max_sites, min_meth, max_meth, cell_names, keep):
+def filter_(
+    data_dir, filtered_dir, min_sites, max_sites, min_meth, max_meth, cell_names, keep
+):
     stats_path = os.path.join(data_dir, "cell_stats.csv")
     stats_path_out = os.path.join(filtered_dir, "cell_stats.csv")
     colname_path = os.path.join(data_dir, "column_header.txt")
@@ -79,6 +91,13 @@ def filter_(data_dir, filtered_dir, min_sites, max_sites, min_meth, max_meth, ce
             )
         cell_idx = _filter_by_name(cell_names, stats_path, keep=keep)
     else:
+        if (min_meth and min_meth <= 1) or (max_meth and max_meth <= 1):
+            echo(
+                "Warning: Your methylation thresholds are very low, "
+                "please make sure that you specified a percentage between "
+                "0 and 100.",
+                fg="red",
+            )
         cell_idx = _filter_by_thresholds(
             min_sites, max_sites, min_meth, max_meth, stats_path
         )

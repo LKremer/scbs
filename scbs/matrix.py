@@ -41,7 +41,10 @@ def matrix(
         if chrom != prev_chrom:
             # we reached a new chrom, load the next matrix
             if chrom in observed_chroms:
-                raise Exception(f"{regions} is not sorted alphabetically!")
+                raise Exception(
+                    f"{regions} is not sorted alphabetically! "
+                    "Please use 'bedtools sort'"
+                )
             mat = _load_chrom_mat(data_dir, chrom)
             if mat is None:
                 unknown_chroms.add(chrom)
