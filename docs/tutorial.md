@@ -67,7 +67,7 @@ If you're working with your own data and you sequenced thousands of cells, `scbs
 
 ### 2. Filtering low-quality cells
 
-Due to various technical issues such as empty wells/droplets and incomplete bisulfite conversion, every scBS experiment comes with a hopefully small number of low-quality cells.
+Due to various technical issues such as empty wells / droplets and incomplete bisulfite conversion, every scBS experiment comes with a hopefully small number of low-quality cells.
 It is recommended to identify and remove these cells before proceeding with the analysis.
 In this tutorial we will look at three quality measures:
 1. The number of observed methylation sites (this usually depends on the read number)
@@ -119,7 +119,7 @@ profile_df %>%
 
 <img src="tutorial_tss_profiles.png" height="300">
 
-There are only two cells that have a suspicous profile.
+There are only two cells that have a suspicous profile: `cell_20` and `cell_30`.
 If you dig into the data yourself, you will find that these two cells are among the three outliers in our previous plot.
 However, in a real data set you might also discover cells that have good quality measures, but a poor TSS profile.
 Let's filter all three low-quality cells from the data set:
@@ -127,6 +127,9 @@ Let's filter all three low-quality cells from the data set:
 scbs filter --min-sites 60000 --min-meth 20 --max-meth 60 compact_data filtered_data
 ```
 This command removes cells with less than 60,000 observed methylation sites, less than 20% global methylation, and more than 60% global methylation (these values would look very different in a real experiment).
+If you want full control over which cells will be filtered, you can also select cells by their name.
+See `scbs filter --help` for details.
+
 We can now proceed with the quality-filtered data, stored in `filtered_data`.
 
 
@@ -170,7 +173,7 @@ Finally, you can quantify the mean methylation of the MVRs that we just discover
 scbs matrix MVRs.bed filtered_data MVR_matrix.csv
 ```
 The result is a long table that lists the average methylation of all regions (here: MVRs) in all cells. We report two measures of methylation: the average methylation (`meth_frac`) and the shrunken residuals (`shrunken_residual`), which are less affected by random variations in read coverage and read positioning within the region.
-This table is currently in [narrow table format](https://en.wikipedia.org/wiki/Wide_and_narrow_data), which means that every row contains the information of one region in a specific cell:
+This table is currently in [narrow table format](https://en.wikipedia.org/wiki/Wide_and_narrow_data) (also called long table format), which means that every row contains the information of one region in a specific cell:
 
 
 | chromosome | start   | end     | n_sites | n_cells | cell_name | n_meth | n_obs | meth_frac | shrunken_residual   |
@@ -180,7 +183,7 @@ This table is currently in [narrow table format](https://en.wikipedia.org/wiki/W
 | 2          | 3194798 | 3197978 | 19      | 14      | cell_05   | 2      | 2     | 1.0       | 0.4367514666223647  |
 | 2          | 3194798 | 3197978 | 19      | 14      | cell_08   | 2      | 2     | 1.0       | 0.1101753329826048  |
 | 2          | 3194798 | 3197978 | 19      | 14      | cell_12   | 1      | 10    | 0.1       | -0.3877691051698608 |
-| ...        |         |         |         |         |           | 1      |       |           |                     |
+| ...        |         |         |         |         |           |        |       |           |                     |
 
 This methylation matrix can now be used to distinguish different cell types in the sample, perform PCA and/or UMAP, or perform clustering.
 
