@@ -87,10 +87,25 @@ def test_filter_cli_keep(tmp_path):
     with open(keep_txt, "w") as f:
         f.write("a\n\n")
     runner = CliRunner()
-    result = runner.invoke(cli, ["filter", "--keep", keep_txt, "tests/data/tiny/data_dir/", p])
+    result = runner.invoke(cli, ["filter", "--cell-names", keep_txt, "tests/data/tiny/data_dir/", p])
     assert result.exit_code == 0, result.output
     with open(os.path.join(p, "column_header.txt")) as colnames:
         assert colnames.read().strip() == "a"
     with open(os.path.join(p, "cell_stats.csv")) as csv:
         assert csv.readline().startswith("cell_name,")
         assert csv.readline().startswith("a,")
+
+
+def test_filter_cli_discard(tmp_path):
+    p = os.path.join(tmp_path, "filtered_data_dir")
+    discard_txt = os.path.join(tmp_path, "cells_to_discard.txt")
+    with open(discard_txt, "w") as f:
+        f.write("\na\n\na\n\n")
+    runner = CliRunner()
+    result = runner.invoke(cli, ["filter", "--discard", "--cell-names", discard_txt, "tests/data/tiny/data_dir/", p])
+    assert result.exit_code == 0, result.output
+    with open(os.path.join(p, "column_header.txt")) as colnames:
+        assert colnames.read().strip() == "b"
+    with open(os.path.join(p, "cell_stats.csv")) as csv:
+        assert csv.readline().startswith("cell_name,")
+        assert csv.readline().startswith("b,")

@@ -412,11 +412,16 @@ def profile_cli(**kwargs):
     "pass filtering.",
 )
 @click.option(
-    "--keep",
+    "--cell-names",
     type=click.File("r"),
-    help="A text file with the names of the cells you want to keep. "
+    help="A text file with the names of the cells you want to keep (default) "
+    "or remove. "
     "This is an alternative to the min/max filtering options. Each cell name "
     "must be on a new line.",
+)
+@click.option("--keep/--discard", default=True,
+    help="Specify whether the cells listed in your text file should be kept (default) "
+    "or discarded from the data set. Only use together with --cell-names."
 )
 def filter_cli(**kwargs):
     timer = Timer(label="filter")

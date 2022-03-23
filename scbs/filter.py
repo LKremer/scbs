@@ -2,24 +2,30 @@ import os
 import glob
 import scipy.sparse as sp_sparse
 from csv import DictReader
-from .utils import echo, secho, _load_chrom_mat
+from .utils import echo, secho, _load_chrom_mat, _get_filepath
 
 
-def _filter_by_name(keep, cell_stats_path):
+def _filter_by_name(file, cell_stats_path, keep=True):
+    f = _get_filepath(file)
     cells_to_keep_idx = []
-    cells_to_keep = {row.strip() for row in keep if row.strip()}
+    cells_to_keep = {row.strip() for row in file if row.strip()}
     available_cells = set()
     with open(cell_stats_path, "r") as stats_csv:
         reader = DictReader(stats_csv)
         for cell_i, row in enumerate(reader):
             cell_name = row["cell_name"]
             available_cells.add(cell_name)
-            if cell_name in cells_to_keep:
-                cells_to_keep_idx.append(cell_i)
+            if keep:
+                if cell_name in cells_to_keep:
+                    cells_to_keep_idx.append(cell_i)
+            else:  # do not keep those cells
+                if cell_name not in cells_to_keep:
+                    cells_to_keep_idx.append(cell_i)
+
     for cell in cells_to_keep:
         if cell not in available_cells:
             raise Exception(
-                f"You want to keep cell '{cell}', but it does "
+                f"{f} lists cell '{cell}', but it does "
                 f"not exist in '{cell_stats_path}'."
             )
     return cells_to_keep_idx
@@ -59,19 +65,19 @@ def _filter_text_file(fpath, rows_to_keep, fpath_out, header=False):
                 outfile.write(row)
 
 
-def filter_(data_dir, filtered_dir, min_sites, max_sites, min_meth, max_meth, keep):
+def filter_(data_dir, filtered_dir, min_sites, max_sites, min_meth, max_meth, cell_names, keep):
     stats_path = os.path.join(data_dir, "cell_stats.csv")
     stats_path_out = os.path.join(filtered_dir, "cell_stats.csv")
     colname_path = os.path.join(data_dir, "column_header.txt")
     colname_path_out = os.path.join(filtered_dir, "column_header.txt")
-    if keep:
+    if cell_names:
         if any([min_sites, max_sites, min_meth, max_meth]):
             secho(
                 "Warning: All filtering thresholds (e.g. --min-sites) "
-                "will be ignored since you used --keep.\n",
+                "will be ignored since you provided --cell-names.\n",
                 fg="red",
             )
-        cell_idx = _filter_by_name(keep, stats_path)
+        cell_idx = _filter_by_name(cell_names, stats_path, keep=keep)
     else:
         cell_idx = _filter_by_thresholds(
             min_sites, max_sites, min_meth, max_meth, stats_path
