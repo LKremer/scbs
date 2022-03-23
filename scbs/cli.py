@@ -80,7 +80,7 @@ def _set_n_threads(ctx, param, value):
         To find out what they do and how to use them, check
         their help like this:
 
-        {style("scbs [subcommand] --help", fg="blue")}
+        {style("scbs [command] --help", fg="blue")}
 
         To use stdin or stdout, use the dash character
         {style("-", fg="blue")} instead of a file path.

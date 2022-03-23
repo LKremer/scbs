@@ -2,10 +2,10 @@
 
 ## Usage principles
 
-`scbs` provides a number of subcommands.
-To view the available subcommands, simply install `scbs` and then type `scbs --help` (or just `scbs`) in your terminal.
-Similarly, you can use `scbs [subcommand] --help` to learn about each subcommand and their arguments.
-For example, use `scbs prepare --help` to learn how to use the `prepare` subcommand.
+`scbs` provides a number of commands.
+To view the available commands, simply install `scbs` and then type `scbs --help` (or just `scbs`) in your terminal.
+Similarly, you can use `scbs [command] --help` to learn about each command and their arguments.
+For example, use `scbs prepare --help` to learn how to use the `prepare` command.
 
 A typical `scbs` workflow consists of the following steps which will be explained in the course of this tutorial:
 1. use `scbs prepare` to store single-cell methylation data in an efficient format
