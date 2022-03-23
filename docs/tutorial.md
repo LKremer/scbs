@@ -53,11 +53,10 @@ In this tutorial, we will analyze a small example data set with just 30 cells. I
 ### 1. Preparing your `scbs` run
 
 The first step of any `scbs` workflow is to collect the methylation data of all single-cell files in order to store it in a more efficient format.
-This can be achieved with the commands `scbs prepare` and `scbs smooth`:
+This can be achieved with the commands `scbs prepare`:
 
 ```bash
 scbs prepare scbs_tutorial_data/*.cov compact_data
-scbs smooth compact_data
 ```
 
 This command will take all files ending in `.cov` in the `scbs_tutorial_data` directory and efficiently store their methylation values in a new directory called `compact_data`.
@@ -76,7 +75,7 @@ In this tutorial we will look at three quality measures:
 
 Measures 1 and 2 can be found in `compact_data/cell_stats.csv`.
 You can easily visualize these quality measures using a method of your choice.
-Here we use R:
+Here, we use R:
 
 ```r
 library(tidyverse)
@@ -166,7 +165,7 @@ The result is a [BED-file](https://en.wikipedia.org/wiki/BED_(file_format)) that
 ```
 
 
-### 4. Getting a methylation matrix
+### 4. Obtaining a methylation matrix
 
 Finally, you can quantify the mean methylation of the MVRs that we just discovered using `scbs matrix`:
 ```bash
@@ -283,10 +282,10 @@ This makes it easy to incorporate other tools such as `bedtools` into your workf
 For example, consider a workflow where you first want to sort your genomic input regions with `bedtools sort`, then you want to quantify methylation at these regions with `scbs matrix`, and then you want to compress the resulting matrix:
 ```bash
 bedtools sort -i unsorted.bed > sorted.bed
-scbs matrix sorted.bed compact_data matrix.csv
+scbs matrix sorted.bed filtered_data matrix.csv
 gzip matrix.csv
 ```
 Using stdin and stdout, this workflow can be simplified:
 ```bash
-bedtools sort -i unsorted.bed | scbs matrix - compact_data - | gzip > matrix.csv.gz
+bedtools sort -i unsorted.bed | scbs matrix - filtered_data - | gzip > matrix.csv.gz
 ```
