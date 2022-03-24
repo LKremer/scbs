@@ -1,9 +1,11 @@
 import os
 import scipy.sparse as sp_sparse
 import glob
-import numpy as np
-from .utils import echo, secho
 import numba
+import numpy as np
+import pandas as pd
+from numba import njit
+from .utils import echo, secho
 
 
 class Smoother(object):
@@ -60,6 +62,17 @@ def smooth(data_dir, bandwidth, use_weights):
     return
 
 
+@njit
+def _populate_smooth_value_dict(smooth_arr):
+    typed_dict = numba.typed.Dict.empty(
+        key_type=numba.types.int64,
+        value_type=numba.types.float64,
+    )
+    for i in range(smooth_arr.shape[0]):
+        typed_dict[int(smooth_arr[i, 0])] = smooth_arr[i, 1]
+    return typed_dict
+
+
 def _load_smoothed_chrom(data_dir, chrom):
     smoothed_path = os.path.join(data_dir, "smoothed", f"{chrom}.csv")
     if not os.path.isfile(smoothed_path):
@@ -68,12 +81,6 @@ def _load_smoothed_chrom(data_dir, chrom):
             f"chromosome {chrom} at {smoothed_path} . "
             "Please run 'scbs smooth' first."
         )
-    typed_dict = numba.typed.Dict.empty(
-        key_type=numba.types.int64,
-        value_type=numba.types.float64,
-    )
-    with open(smoothed_path, "r") as smooth_file:
-        for line in smooth_file:
-            pos, smooth_val = line.strip().split(",")
-            typed_dict[int(pos)] = float(smooth_val)
+    smoo_df = pd.read_csv(smoothed_path, delimiter=",", header=None, dtype="float")
+    typed_dict = _populate_smooth_value_dict(smoo_df.values)
     return typed_dict
