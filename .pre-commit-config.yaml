@@ -7,16 +7,16 @@ repos:
     rev: 22.1.0
     hooks:
       - id: black
-        exclude: "benchmarks/*"
+        exclude: "benchmarks"
 
   - repo: https://github.com/timothycrosley/isort
     rev: 5.10.1
     hooks:
       - id: isort
-        exclude: "benchmarks/*"
+        exclude: "benchmarks"
 
   - repo: https://gitlab.com/pycqa/flake8
     rev: 4.0.1
     hooks:
       - id: flake8
-        exclude: "benchmarks/*"
+        exclude: "benchmarks"
