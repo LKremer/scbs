@@ -1,10 +1,12 @@
-import os
-import scipy.sparse as sp_sparse
 import glob
+import os
+
 import numba
 import numpy as np
 import pandas as pd
+import scipy.sparse as sp_sparse
 from numba import njit
+
 from .utils import echo, secho
 
 
@@ -13,7 +15,7 @@ class Smoother(object):
         # create the tricube kernel
         self.hbw = bandwidth // 2
         rel_dist = np.abs((np.arange(bandwidth) - self.hbw) / self.hbw)
-        self.kernel = (1 - (rel_dist ** 3)) ** 3
+        self.kernel = (1 - (rel_dist**3)) ** 3
         # calculate (unsmoothed) methylation fraction across the chromosome
         n_obs = sparse_mat.getnnz(axis=1)
         n_meth = np.ravel(np.sum(sparse_mat > 0, axis=1))

@@ -1,7 +1,8 @@
-from .utils import _iter_bed, echo, secho, _parse_cell_names, _load_chrom_mat
-from .smooth import _load_smoothed_chrom
-from .numerics import _calc_region_stats, _calc_mean_shrunken_residuals
 import numpy as np
+
+from .numerics import _calc_mean_shrunken_residuals, _calc_region_stats
+from .smooth import _load_smoothed_chrom
+from .utils import _iter_bed, _load_chrom_mat, _parse_cell_names, echo, secho
 
 
 def matrix(

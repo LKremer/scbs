@@ -7,9 +7,8 @@ import numpy as np
 from numba import njit, prange
 
 from .numerics import _calc_mean_shrunken_residuals
-from .utils import echo, secho, _load_chrom_mat
 from .smooth import _load_smoothed_chrom
-
+from .utils import _load_chrom_mat, echo, secho
 
 # ignore division by 0 and division by NaN error
 np.seterr(divide="ignore", invalid="ignore")
@@ -28,7 +27,7 @@ def _output_file_handle(raw_path):
 
 @njit
 def _find_peaks(smoothed_vars, swindow_centers, var_cutoff, half_bw):
-    """" variance peak calling """
+    """ " variance peak calling"""
     peak_starts = []
     peak_ends = []
     in_peak = False

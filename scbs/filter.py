@@ -1,8 +1,10 @@
-import os
 import glob
-import scipy.sparse as sp_sparse
+import os
 from csv import DictReader
-from .utils import echo, secho, _load_chrom_mat, _get_filepath
+
+import scipy.sparse as sp_sparse
+
+from .utils import _get_filepath, _load_chrom_mat, echo, secho
 
 
 def _filter_by_name(file, cell_stats_path, keep=True):

@@ -1,9 +1,11 @@
-import numpy as np
 import gzip
 import os
-import scipy.sparse as sp_sparse
 import sys
+
+import numpy as np
 import pandas as pd
+import scipy.sparse as sp_sparse
+
 from .utils import echo, secho
 
 

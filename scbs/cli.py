@@ -1,17 +1,19 @@
-import numba
-import click
-from datetime import datetime, timedelta
 from collections import OrderedDict
+from datetime import datetime, timedelta
+
+import click
+import numba
 from click import style
 from click_help_colors import HelpColorsGroup
-from .scbs import scan, echo
-from .utils import _get_filepath
+
+from . import __version__
+from .filter import filter_
+from .matrix import matrix
 from .prepare import prepare
 from .profile import profile
+from .scbs import echo, scan
 from .smooth import smooth
-from .matrix import matrix
-from .filter import filter_
-from . import __version__
+from .utils import _get_filepath
 
 
 class Timer(object):

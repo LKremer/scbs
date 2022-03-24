@@ -1,9 +1,11 @@
-import pytest
 import os
 import shutil
+
+import pytest
 import scipy.sparse as sp_sparse
-from pandas import read_csv
 from click.testing import CliRunner
+from pandas import read_csv
+
 from scbs.cli import cli
 
 

@@ -1,6 +1,5 @@
 from scbs import __version__
 
-
 with open("pyproject.toml", "r") as toml:
     for line in toml:
         if line.startswith("version = "):

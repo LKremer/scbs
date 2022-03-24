@@ -1,7 +1,8 @@
-import click
-import pandas as pd
-import numpy as np
 import os
+
+import click
+import numpy as np
+import pandas as pd
 import scipy.sparse as sp_sparse
 from statsmodels.stats.proportion import proportion_confint
 
@@ -20,7 +21,7 @@ def secho(*args, **kwargs):
 
 
 def _get_filepath(f):
-    """ returns the path of a file handle, if needed """
+    """returns the path of a file handle, if needed"""
     if type(f) is tuple and hasattr(f[0], "name"):
         return f"{f[0].name} and {len(f) - 1} more files"
     return f.name if hasattr(f, "name") else f
