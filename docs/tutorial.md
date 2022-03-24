@@ -33,13 +33,14 @@ Here are the first five lines of an example file, which is a `.cov`-file generat
 1       100026855       100026855       100.000000      1       0
 1       100027218       100027218       100.000000      2       0
 1       100051671       100051671       0.000000        0       2
+...
 ```
 
 You should have one of these files per cell.
 
 The columns denote the chromosome name, the start and end coordinates of the methylation site (identical in this case), the observed percentage of methylation (typically 0% or 100% in single-cell data), the number of reads that are methylated at that site, and the number of unmethylated reads.
 If you did not use Bismark and your files have a slightly different format, don't worry.
-We support a range of different input formats and you can even define your own custom format.
+We support a range of different input formats and you can even define your own custom format (see `scbs prepare --help`).
 
 `scbs` supports both uncompressed and gzip-compressed input files, as long as any gzipped files end in `.gz`.
 
@@ -61,7 +62,8 @@ scbs prepare scbs_tutorial_data/*.cov compact_data
 
 This command will take all files ending in `.cov` in the `scbs_tutorial_data` directory and efficiently store their methylation values in a new directory called `compact_data`.
 `scbs prepare` is the only step that requires the raw data, all other `scbs` commands work directly with `compact_data`.
-If you're working with your own data and you sequenced thousands of cells, `scbs prepare` will take quite long. But fortunately, you only have to run it once in the very beginning.
+If you're working with your own data and you sequenced thousands of cells, `scbs prepare` will take quite long.
+But fortunately, you only have to run it once in the very beginning.
 
 
 ### 2. Filtering low-quality cells
@@ -121,13 +123,14 @@ profile_df %>%
 There are only two cells that have a suspicous profile: `cell_20` and `cell_30`.
 If you dig into the data yourself, you will find that these two cells are among the three outliers in our previous plot.
 However, in a real data set you might also discover cells that have good quality measures, but a poor TSS profile.
+In most cases, these cells should be filtered.
+
 Let's filter all three low-quality cells from the data set:
 ```bash
 scbs filter --min-sites 60000 --min-meth 20 --max-meth 60 compact_data filtered_data
 ```
 This command removes cells with less than 60,000 observed methylation sites, less than 20% global methylation, and more than 60% global methylation (these values would look very different in a real experiment).
-If you want full control over which cells will be filtered, you can also select cells by their name.
-See `scbs filter --help` for details.
+If you want full control over which cells will be filtered, you can also select cells by their name, see `scbs filter --help` for details.
 
 We can now proceed with the quality-filtered data, stored in `filtered_data`.
 
@@ -141,7 +144,7 @@ But not all methylation differences occur at promoters or gene bodies, hence we 
 This can be achieved with `scbs scan`.
 
 Before you can run `scbs scan` for the first time, you will need to run `scbs smooth` once.
-This command simply calculates treats all your single cells as a pseudo-bulk sample and calculates the smoothed mean methylation along the whole genome.
+This command simply treats all your single cells as a pseudo-bulk sample and calculates the smoothed mean methylation along the whole genome.
 This information is required for MVR detection, and later, for obtaining a methylation matrix.
 
 ```bash
@@ -184,6 +187,10 @@ This table is currently in [narrow table format](https://en.wikipedia.org/wiki/W
 | 2          | 3194798 | 3197978 | 19      | 14      | cell_12   | 1      | 10    | 0.1       | -0.3877691051698608 |
 | ...        |         |         |         |         |           |        |       |           |                     |
 
+Note that this table also contains some information about the regions that we quantified:
+`n_sites` is the number of methylation sites (usually CpG dinucleotides) and `n_cells` is the number of cells for which we were able to quantify methylation in that region.
+In this specific case, region `2:3194798-3197978` contains 19 CpG sites and 14 of our 27 cells had at least one sequencing read mapped to the region.
+Note that the table contains multiple rows per region (one for each cell), which is why `n_sites` and `n_cells` are repeated here.
 This methylation matrix can now be used to distinguish different cell types in the sample, perform PCA and/or UMAP, or perform clustering.
 
 If you want, you can also get a methylation matrix of specific genomic features that you are interested in.
@@ -191,8 +198,6 @@ For example, here we quantify methylation of promoters in the mouse genome:
 ```bash
 scbs matrix scbs_tutorial_data/mouse_promoters.bed filtered_data promoter_matrix.csv
 ```
-
-
 
 
 ### 5. Downstream analysis
