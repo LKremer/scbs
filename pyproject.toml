@@ -2,7 +2,22 @@
 name = "scbs"
 version = "0.3.0"
 description = "command line utility to work with single cell methylation data"
-authors = ["Lukas PM Kremer <L-Kremer@web.de>"]
+authors = [
+    "Lukas PM Kremer <L-Kremer@web.de>",
+    "Leonie Küchenhoff <leonie.kuechenhoff@gmx.de>",
+    "Alexey Uvarovskii <a.uvarovskii@uni-heidelberg.de>",
+    "Simon Anders <simon.anders@bioquant.uni-heidelberg.de>",
+]
+maintainers = ["Lukas PM Kremer <L-Kremer@web.de>"]
+readme = "README.md"
+repository = "https://github.com/LKremer/scbs"
+homepage = "https://github.com/LKremer/scbs"
+keywords = ["biology", "bioinformatics", "single cell", "methylation", "single cell bisulfite sequencing"]
+license = "GPL-3.0-or-later"
+classifiers = [
+    "Topic :: Scientific/Engineering :: Bio-Informatics",
+    "Topic :: Scientific/Engineering :: Visualization",
+]
 
 [tool.poetry.dependencies]
 python = ">=3.8,<3.10"
