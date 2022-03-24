@@ -10,7 +10,7 @@ For example, use `scbs prepare --help` to learn how to use the `prepare` command
 A typical `scbs` workflow consists of the following steps which will be explained in the course of this tutorial:
 1. use `scbs prepare` to store single-cell methylation data in an efficient format
 2. use `scbs filter` to filter low-quality cells
-3. use `scbs scan` to discover methylation-variable regions in the genome, or alternatively provide your own regions of interest
+3. use `scbs scan` to discover variably methylated regions (VMRs) in the genome, or alternatively provide your own regions of interest
 4. use `scbs matrix` to receive a methylation matrix analogous to the count matrix in scRNA-seq
 5. use the methylation matrix for downstream analysis such as dimensionality reduction and clustering
 
@@ -135,26 +135,26 @@ If you want full control over which cells will be filtered, you can also select 
 We can now proceed with the quality-filtered data, stored in `filtered_data`.
 
 
-### 3. Discovering methylation-variable regions
+### 3. Discovering variably methylated regions (VMRs)
 
 The starting point of every single-cell RNA-seq analysis is a gene × cell (or cell × gene) count matrix that can be used for downstream analyses such as dimensionality reduction or clustering.
 But single-cell methylation data is genome-wide and not limited to genes, hence we need to define genomic regions of interest.
 A common strategy is to simply quantify methylation at promoters or gene bodies.
-But not all methylation differences occur at promoters or gene bodies, hence we propose to discover methylation-variable regions (MVRs) in the data itself.
+But not all methylation differences occur at promoters or gene bodies, hence we propose to discover variably methylated regions (VMRs) in the data itself.
 This can be achieved with `scbs scan`.
 
 Before you can run `scbs scan` for the first time, you will need to run `scbs smooth` once.
 This command simply treats all your single cells as a pseudo-bulk sample and calculates the smoothed mean methylation along the whole genome.
-This information is required for MVR detection, and later, for obtaining a methylation matrix.
+This information is required for VMR detection, and later, for obtaining a methylation matrix.
 
 ```bash
 scbs smooth filtered_data
 ```
 
-Now that `filtered_data` is smoothed, we can proceed with the MVR detection:
+Now that `filtered_data` is smoothed, we can proceed with the VMR detection:
 
 ```bash
-scbs scan --threads 4 filtered_data MVRs.bed
+scbs scan --threads 4 filtered_data VMRs.bed
 ```
 We use the option `--threads 4` in order to run the program on 4 CPU threads in parallel. If you want to use all available threads, simply omit the `--threads` option altogether.
 The result is a [BED-file](https://en.wikipedia.org/wiki/BED_(file_format)) that lists the genomic coordinates (chromosome, start, end) of regions where methylation is variable between cells, as well as the methylation variance of the region:
@@ -170,11 +170,11 @@ The result is a [BED-file](https://en.wikipedia.org/wiki/BED_(file_format)) that
 
 ### 4. Obtaining a methylation matrix
 
-Finally, you can quantify the mean methylation of the MVRs that we just discovered using `scbs matrix`:
+Finally, you can quantify the mean methylation of the VMRs that we just discovered using `scbs matrix`:
 ```bash
-scbs matrix MVRs.bed filtered_data MVR_matrix.csv
+scbs matrix VMRs.bed filtered_data VMR_matrix.csv
 ```
-The result is a long table that lists the average methylation of all regions (here: MVRs) in all cells. We report two measures of methylation: the average methylation (`meth_frac`) and the shrunken residuals (`shrunken_residual`), which are less affected by random variations in read coverage and read positioning within the region.
+The result is a long table that lists the average methylation of all regions (here: VMRs) in all cells. We report two measures of methylation: the average methylation (`meth_frac`) and the shrunken residuals (`shrunken_residual`), which are less affected by random variations in read coverage and read positioning within the region.
 This table is currently in [narrow table format](https://en.wikipedia.org/wiki/Wide_and_narrow_data) (also called long table format), which means that every row contains the information of one region in a specific cell:
 
 
@@ -213,7 +213,7 @@ Finally, we transform the dataframe into a matrix.
 library(tidyverse)
 library(irlba)
 
-meth_mtx <- read_csv("MVR_matrix.csv") %>% 
+meth_mtx <- read_csv("VMR_matrix.csv") %>% 
   unite("region", c("chromosome", "start", "end")) %>% 
   pivot_wider("cell_name", names_from = "region", values_from = "shrunken_residual") %>% 
   column_to_rownames(var="cell_name") %>% 
@@ -271,7 +271,7 @@ pca$x %>%
 
 <img src="tutorial_PCA.png" width="300" height="300">
 
-Of course you can also use PCA on the promoter methylation matrix instead of the MVR matrix by simply loading `promoter_matrix.csv` instead of `MVR_matrix.csv`.
+Of course you can also use PCA on the promoter methylation matrix instead of the VMR matrix by simply loading `promoter_matrix.csv` instead of `VMR_matrix.csv`.
 This matrix yields a visually similar PCA, although the three cell types are not as cleanly separated:
 
 <img src="tutorial_PCA_promoter.png" width="300" height="300">
