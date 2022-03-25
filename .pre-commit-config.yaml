@@ -24,7 +24,7 @@ repos:
   - repo: local
     hooks:
       - id: pytest
-        name: pytest unit tests
+        name: pytest
         entry: poetry run pytest
         pass_filenames: false
         language: system

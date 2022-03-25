@@ -427,7 +427,7 @@ def matrix_cli(**kwargs):
 )
 def profile_cli(**kwargs):
     timer = Timer(label="profile")
-    # _print_kwargs(kwargs)
+    _print_kwargs(kwargs)
     profile(**kwargs)
     timer.stop()
 
