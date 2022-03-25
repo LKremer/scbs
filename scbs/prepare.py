@@ -47,7 +47,7 @@ def prepare(input_files, data_dir, input_format):
         os.remove(coo_path)  # delete temporary .coo file
 
     colname_path = _write_column_names(data_dir, cell_names)
-    echo(f"\nWrote matrix column names to {colname_path}")
+    echo(f"\nWrote cell names to {colname_path}")
     stats_path = _write_summary_stats(data_dir, cell_names, n_obs_cell, n_meth_cell)
     echo(f"Wrote summary stats for each cell to {stats_path}")
     secho(
