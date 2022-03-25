@@ -8,7 +8,7 @@ from .utils import _get_filepath, _load_chrom_mat, echo, secho
 
 
 def _filter_by_name(file, cell_stats_path, keep=True):
-    f = _get_filepath(file)
+    fpath = _get_filepath(file)
     cells_to_keep_idx = []
     cells_to_keep = {row.strip() for row in file if row.strip()}
     available_cells = set()
@@ -27,7 +27,7 @@ def _filter_by_name(file, cell_stats_path, keep=True):
     for cell in cells_to_keep:
         if cell not in available_cells:
             raise Exception(
-                f"{f} lists cell '{cell}', but it does "
+                f"{fpath} lists cell '{cell}', but it does "
                 f"not exist in '{cell_stats_path}'."
             )
     return cells_to_keep_idx
@@ -38,7 +38,9 @@ def _filter_by_thresholds(min_sites, max_sites, min_meth, max_meth, cell_stats_p
     counter = {"min-sites": 0, "max-sites": 0, "min-meth": 0, "max-meth": 0}
     with open(cell_stats_path, "r") as stats_csv:
         reader = DictReader(stats_csv)
+        n_cells = 0
         for cell_i, row in enumerate(reader):
+            n_cells += 1
             n_sites = int(row["n_obs"])
             meth_frac = float(row["global_meth_frac"])
             if min_sites and n_sites < min_sites:
@@ -57,7 +59,6 @@ def _filter_by_thresholds(min_sites, max_sites, min_meth, max_meth, cell_stats_p
     for threshold, count in counter.items():
         if count:
             echo(f"{count} cells did not pass the --{threshold} threshold.")
-    n_cells = cell_i + 1
     n_filtered = n_cells - len(cells_to_keep_idx)
     secho(
         f"\nFiltering {n_filtered} of {n_cells} cells "

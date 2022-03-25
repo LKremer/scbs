@@ -16,13 +16,12 @@ from .smooth import smooth
 from .utils import _get_filepath
 
 
-class Timer(object):
+class Timer:
     def __init__(self, label="run", fmt="%a %b %d %H:%M:%S %Y"):
         self.label = style(label, bold=True)
         self.fmt = fmt
         self.begin_time = datetime.now()
         echo(f"\nStarted {self.label} on {self.begin_time.strftime(self.fmt)}.")
-        return
 
     def stop(self):
         end_time = datetime.now()
@@ -31,12 +30,11 @@ class Timer(object):
             f"\nFinished {self.label} on {end_time.strftime(self.fmt)}. "
             f"Total runtime was {runtime} (hour:min:s)."
         )
-        return
 
 
 class OrderedGroup(HelpColorsGroup):
     def __init__(self, commands=None, *args, **kwargs):
-        super(OrderedGroup, self).__init__(*args, **kwargs)
+        super().__init__(*args, **kwargs)
         self.commands = commands or OrderedDict()
 
     def list_commands(self, ctx):
@@ -150,6 +148,80 @@ def prepare_cli(**kwargs):
     timer = Timer(label="prepare")
     _print_kwargs(kwargs)
     prepare(**kwargs)
+    timer.stop()
+
+
+# filter command
+@cli.command(
+    name="filter",
+    help=f"""
+    Filters low-quality cells based on the number of observed methylation sites
+    and/or the global methylation percentage.
+
+    Alternatively, you may also provide a text file with the names of the cells you
+    want to keep.
+
+    {style("DATA_DIR", fg="green")} is the unfiltered directory containing the
+    methylation matrices produced by running 'scbs prepare'.
+
+    {style("FILTERED_DIR", fg="green")} is the output directory storing methylation
+    data only for the cells that passed all filtering criteria.
+    """,
+    short_help="Filter low-quality cells based on coverage and mean methylation",
+    no_args_is_help=True,
+)
+@click.argument(
+    "data-dir",
+    type=click.Path(exists=True, dir_okay=True, file_okay=False, readable=True),
+)
+@click.argument(
+    "filtered-dir",
+    type=click.Path(dir_okay=True, file_okay=False, writable=True),
+)
+@click.option(
+    "--min-sites",
+    type=click.IntRange(min=1),
+    metavar="INTEGER",
+    help="Minimum number of methylation sites required for a cell to pass filtering.",
+)
+@click.option(
+    "--max-sites",
+    type=click.IntRange(min=1),
+    metavar="INTEGER",
+    help="Maximum number of methylation sites required for a cell to pass filtering.",
+)
+@click.option(
+    "--min-meth",
+    type=click.FloatRange(min=0, max=100),
+    metavar="PERCENT",
+    help="Minimum average methylation percentage required for a cell to "
+    "pass filtering.",
+)
+@click.option(
+    "--max-meth",
+    type=click.FloatRange(min=0, max=100),
+    metavar="PERCENT",
+    help="Maximum average methylation percentage required for a cell to "
+    "pass filtering.",
+)
+@click.option(
+    "--cell-names",
+    type=click.File("r"),
+    help="A text file with the names of the cells you want to keep (default) "
+    "or remove. "
+    "This is an alternative to the min/max filtering options. Each cell name "
+    "must be on a new line.",
+)
+@click.option(
+    "--keep/--discard",
+    default=True,
+    help="Specify whether the cells listed in your text file should be kept (default) "
+    "or discarded from the data set. Only use together with --cell-names.",
+)
+def filter_cli(**kwargs):
+    timer = Timer(label="filter")
+    _print_kwargs(kwargs)
+    filter_(**kwargs)
     timer.stop()
 
 
@@ -357,80 +429,6 @@ def profile_cli(**kwargs):
     timer = Timer(label="profile")
     _print_kwargs(kwargs)
     profile(**kwargs)
-    timer.stop()
-
-
-# filter command
-@cli.command(
-    name="filter",
-    help=f"""
-    Filters low-quality cells based on the number of observed methylation sites
-    and/or the global methylation percentage.
-
-    Alternatively, you may also provide a text file with the names of the cells you
-    want to keep.
-
-    {style("DATA_DIR", fg="green")} is the unfiltered directory containing the
-    methylation matrices produced by running 'scbs prepare'.
-
-    {style("FILTERED_DIR", fg="green")} is the output directory storing methylation
-    data only for the cells that passed all filtering criteria.
-    """,
-    short_help="Filter low-quality cells based on coverage and mean methylation",
-    no_args_is_help=True,
-)
-@click.argument(
-    "data-dir",
-    type=click.Path(exists=True, dir_okay=True, file_okay=False, readable=True),
-)
-@click.argument(
-    "filtered-dir",
-    type=click.Path(dir_okay=True, file_okay=False, writable=True),
-)
-@click.option(
-    "--min-sites",
-    type=click.IntRange(min=1),
-    metavar="INTEGER",
-    help="Minimum number of methylation sites required for a cell to pass filtering.",
-)
-@click.option(
-    "--max-sites",
-    type=click.IntRange(min=1),
-    metavar="INTEGER",
-    help="Maximum number of methylation sites required for a cell to pass filtering.",
-)
-@click.option(
-    "--min-meth",
-    type=click.FloatRange(min=0, max=100),
-    metavar="PERCENT",
-    help="Minimum average methylation percentage required for a cell to "
-    "pass filtering.",
-)
-@click.option(
-    "--max-meth",
-    type=click.FloatRange(min=0, max=100),
-    metavar="PERCENT",
-    help="Maximum average methylation percentage required for a cell to "
-    "pass filtering.",
-)
-@click.option(
-    "--cell-names",
-    type=click.File("r"),
-    help="A text file with the names of the cells you want to keep (default) "
-    "or remove. "
-    "This is an alternative to the min/max filtering options. Each cell name "
-    "must be on a new line.",
-)
-@click.option(
-    "--keep/--discard",
-    default=True,
-    help="Specify whether the cells listed in your text file should be kept (default) "
-    "or discarded from the data set. Only use together with --cell-names.",
-)
-def filter_cli(**kwargs):
-    timer = Timer(label="filter")
-    _print_kwargs(kwargs)
-    filter_(**kwargs)
     timer.stop()
 
 

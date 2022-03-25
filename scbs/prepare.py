@@ -31,7 +31,7 @@ def prepare(input_files, data_dir, input_format):
     )
 
     # read each COO file and convert the matrix to CSR format.
-    for chrom in coo_files.keys():
+    for chrom in coo_files:
         # create empty matrix
         chrom_size = chrom_sizes[chrom]
         echo(f"Populating {chrom_size} x {n_cells} matrix for chromosome {chrom}...")
@@ -55,25 +55,24 @@ def prepare(input_files, data_dir, input_format):
         f"with {len(coo_files.keys())} chromosomes.",
         fg="green",
     )
-    return
 
 
 def _get_cell_names(cov_files):
     """Use the file base names (without extension) as cell names."""
     names = []
     for file_handle in cov_files:
-        f = os.path.basename(file_handle.name)
-        if f.lower().endswith(".gz"):
+        name = os.path.basename(file_handle.name)
+        if name.lower().endswith(".gz"):
             # remove .gz
-            f = f[:-3]
+            name = name[:-3]
         # remove .xxx
-        names.append(os.path.splitext(f)[0])
+        names.append(os.path.splitext(name)[0])
     if len(set(names)) < len(names):
-        s = (
+        err_msg = (
             "\n".join(names) + "\nThese sample names are not unique, "
             "check your file names again!"
         )
-        raise Exception(s)
+        raise Exception(err_msg)
     return names
 
 
@@ -83,9 +82,9 @@ def _dump_coo_files(fpaths, input_format, n_cells, output_dir):
         c_col, p_col, m_col, u_col, coverage, sep, header = _human_to_computer(
             input_format
         )
-    except Exception as e:
-        raise type(e)(
-            f"{e}\n\nUnknown input file format '{input_format}'.\nValid options "
+    except Exception as exc:
+        raise type(exc)(
+            f"{exc}\n\nUnknown input file format '{input_format}'.\nValid options "
             "include 'bismark', 'allc', 'methylpy' or a custom ':'-separated format "
             "(check 'scbs prepare --help' for details)."
         ).with_traceback(sys.exc_info()[2])
@@ -127,8 +126,8 @@ def _load_csr_from_coo(coo_path, chrom_size, n_cells):
         )
         echo("Converting from COO to CSR...")
         mat = mat.tocsr()  # convert from COO to CSR format
-    except Exception as e:
-        raise type(e)(f"{e} (problematic file: {coo_path})").with_traceback(
+    except Exception as exc:
+        raise type(exc)(f"{exc} (problematic file: {coo_path})").with_traceback(
             sys.exc_info()[2]
         )
     return mat
@@ -271,8 +270,8 @@ def _iterate_covfile(cov_file, c_col, p_col, m_col, u_col, coverage, sep, header
                     coverage,
                 )
     # we add the name of the file which caused the crash so that the user can fix it
-    except Exception as e:
-        raise type(e)(f"{e} (in file: {cov_file.name})").with_traceback(
+    except Exception as exc:
+        raise type(exc)(f"{exc} (in file: {cov_file.name})").with_traceback(
             sys.exc_info()[2]
         )
 
