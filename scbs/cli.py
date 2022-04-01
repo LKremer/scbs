@@ -2,18 +2,11 @@ from collections import OrderedDict
 from datetime import datetime, timedelta
 
 import click
-import numba
 from click import style
 from click_help_colors import HelpColorsGroup
 
 from . import __version__
-from .filter import filter_
-from .matrix import matrix
-from .prepare import prepare
-from .profile import profile
-from .scbs import echo, scan
-from .smooth import smooth
-from .utils import _get_filepath
+from .utils import _get_filepath, echo
 
 
 class Timer:
@@ -56,7 +49,9 @@ def _set_n_threads(ctx, param, value):
     Arguments come straight from click option.
     """
     if value == -1:
-        return numba.config.NUMBA_NUM_THREADS
+        from numba import config
+
+        return config.NUMBA_NUM_THREADS
     elif value == 0:
         return 1
     else:
@@ -145,6 +140,8 @@ def cli():
     '0'.""",
 )
 def prepare_cli(**kwargs):
+    from .prepare import prepare
+
     timer = Timer(label="prepare")
     _print_kwargs(kwargs)
     prepare(**kwargs)
@@ -219,6 +216,8 @@ def prepare_cli(**kwargs):
     "or discarded from the data set. Only use together with --cell-names.",
 )
 def filter_cli(**kwargs):
+    from .filter import filter_
+
     timer = Timer(label="filter")
     _print_kwargs(kwargs)
     filter_(**kwargs)
@@ -262,6 +261,8 @@ def filter_cli(**kwargs):
     help="Use this to weigh each methylation site by log1p(coverage).",
 )
 def smooth_cli(**kwargs):
+    from .smooth import smooth
+
     timer = Timer(label="smooth")
     _print_kwargs(kwargs)
     smooth(**kwargs)
@@ -325,6 +326,8 @@ def smooth_cli(**kwargs):
     callback=_set_n_threads,
 )
 def scan_cli(**kwargs):
+    from .scbs import scan
+
     timer = Timer(label="scan")
     _print_kwargs(kwargs)
     scan(**kwargs)
@@ -366,6 +369,8 @@ def scan_cli(**kwargs):
     help="Use this to keep any other columns that the input bed-file may contain.",
 )
 def matrix_cli(**kwargs):
+    from .matrix import matrix
+
     timer = Timer(label="matrix")
     _print_kwargs(kwargs)
     matrix(**kwargs)
@@ -426,6 +431,8 @@ def matrix_cli(**kwargs):
     "you want to concatenate multiple outputs  [optional].",
 )
 def profile_cli(**kwargs):
+    from .profile import profile
+
     timer = Timer(label="profile")
     _print_kwargs(kwargs)
     profile(**kwargs)
