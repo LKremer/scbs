@@ -246,6 +246,7 @@ def create_custom_format(format_string):
 
 def create_standard_format(format_name):
     """Create a format object on the basis of the format name."""
+    format_name = format_name.lower()  # ignore case
     if format_name in ("bismarck", "bismark"):
         return CoverageFormat(
             0,
