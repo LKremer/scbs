@@ -1,17 +1,20 @@
 import gzip
 import os
 import sys
+from datetime import datetime
 
 import numpy as np
 import pandas as pd
 import scipy.sparse as sp_sparse
 
+from . import __version__
 from .utils import echo, secho
 
 
 def prepare(input_files, data_dir, input_format):
     cell_names = _get_cell_names(input_files)
     n_cells = len(cell_names)
+    os.makedirs(data_dir, exist_ok=True)
     # we use this opportunity to count some basic summary stats
     n_obs_cell = np.zeros(n_cells, dtype=np.int64)
     n_meth_cell = np.zeros(n_cells, dtype=np.int64)
@@ -50,11 +53,34 @@ def prepare(input_files, data_dir, input_format):
     echo(f"\nWrote cell names to {colname_path}")
     stats_path = _write_summary_stats(data_dir, cell_names, n_obs_cell, n_meth_cell)
     echo(f"Wrote summary stats for each cell to {stats_path}")
+    _write_run_info(
+        os.path.join(data_dir, "run_info.txt"),
+        input_files=input_files,
+        data_dir=data_dir,
+        input_format=input_format,
+    )
     secho(
         f"\nSuccessfully stored methylation data for {n_cells} cells "
         f"with {len(coo_files.keys())} chromosomes.",
         fg="green",
     )
+
+
+def _write_run_info(fpath, **kwargs):
+    with open(fpath, "w") as log:
+        now = datetime.now().strftime("%a %b %d %H:%M:%S %Y")
+        # log.write("using scbs version {__version__} on {now}")
+        log.write(
+            "This directory was generated\n"
+            f"on {now}\nwith scbs prepare version {__version__}\n"
+            "with the following parameters:"
+        )
+        for arg, value in kwargs.items():
+            log.write(f"\n\n{arg}\n")
+            if isinstance(value, (list, tuple, set)):
+                log.write("\n".join(str(v) for v in value))
+            else:
+                log.write(value)
 
 
 def _get_cell_names(cov_files):
@@ -77,7 +103,6 @@ def _get_cell_names(cov_files):
 
 
 def _dump_coo_files(fpaths, input_format, n_cells, output_dir):
-    os.makedirs(output_dir, exist_ok=True)
     try:
         c_col, p_col, m_col, u_col, coverage, sep, header = _human_to_computer(
             input_format
