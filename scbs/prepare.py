@@ -67,9 +67,9 @@ def prepare(input_files, data_dir, input_format):
 
 
 def _write_run_info(fpath, **kwargs):
+    """On prepare, write scbs version, run date and parameters to a logfile"""
     with open(fpath, "w") as log:
         now = datetime.now().strftime("%a %b %d %H:%M:%S %Y")
-        # log.write("using scbs version {__version__} on {now}")
         log.write(
             "This directory was generated\n"
             f"on {now}\nwith scbs prepare version {__version__}\n"
