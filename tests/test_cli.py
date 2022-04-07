@@ -13,7 +13,15 @@ def test_prepare_cli(tmp_path):
     runner = CliRunner()
     p = os.path.join(tmp_path, "data_dir")
     result = runner.invoke(
-        cli, ["prepare", "tests/data/tiny/a.cov", "tests/data/tiny/b.cov.gz", p]
+        cli,
+        [
+            "prepare",
+            "--input-format",
+            "biSmArcK",
+            "tests/data/tiny/a.cov",
+            "tests/data/tiny/b.cov.gz",
+            p,
+        ],
     )
     assert result.exit_code == 0, result.output
     mat = sp_sparse.load_npz(os.path.join(p, "1.npz"))
@@ -22,10 +30,35 @@ def test_prepare_cli(tmp_path):
     mat = sp_sparse.load_npz(os.path.join(p, "2.npz"))
     assert mat.shape == (1236, 2)
     assert mat.data.shape == (5,)
+    assert mat[1000, 0] == -1
+    assert mat[1234, 0] == 1
+    assert mat[42, 0] == 0
     with open(os.path.join(p, "cell_stats.csv")) as stats:
         assert stats.read() == (
             "cell_name,n_obs,n_meth,global_meth_frac\n" "a,5,2,0.4\n" "b,5,3,0.6\n"
         )
+
+
+def test_prepare_rounded_cli(tmp_path):
+    runner = CliRunner()
+    p = os.path.join(tmp_path, "data_dir_rounded")
+    result = runner.invoke(
+        cli,
+        [
+            "prepare",
+            "--round-sites",
+            "tests/data/tiny/a.cov",
+            "tests/data/tiny/b.cov.gz",
+            p,
+        ],
+    )
+    assert result.exit_code == 0, result.output
+    mat = sp_sparse.load_npz(os.path.join(p, "1.npz"))
+    assert mat.shape == (53, 2)
+    assert mat.data.shape == (7,)
+    assert mat[1, 0] == -1  # 25% methylated
+    assert mat[2, 0] == 1  # 75% methylated
+    assert mat[3, 0] == 0  # 50% methylated
 
 
 def test_smooth_cli():

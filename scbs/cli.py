@@ -114,6 +114,17 @@ def cli():
     type=click.Path(dir_okay=True, file_okay=False, writable=True),
 )
 @click.option(
+    "--round-sites",
+    is_flag=True,
+    help="""
+    Specify that you want to round methylation sites with ambigous status to
+    0% or 100%. This means, for example, that a CpG site with 5 methylated reads and
+    1 unmethylated read will be considered methylated in that cell. Otherwise, ambiguous
+    sites will be discarded. Note that sites with the same number of methylated and
+    unmethylated reads will always be discarded.
+    """,
+)
+@click.option(
     "--input-format",
     default="bismark",
     help="""

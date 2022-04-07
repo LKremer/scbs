@@ -11,7 +11,7 @@ from . import __version__
 from .utils import echo, secho
 
 
-def prepare(input_files, data_dir, input_format):
+def prepare(input_files, data_dir, input_format, round_sites):
     cell_names = _get_cell_names(input_files)
     n_cells = len(cell_names)
     os.makedirs(data_dir, exist_ok=True)
@@ -26,7 +26,7 @@ def prepare(input_files, data_dir, input_format):
     # more efficient format (CSR).
     echo(f"Processing {n_cells} methylation files...")
     coo_files, chrom_sizes = _dump_coo_files(
-        input_files, input_format, n_cells, data_dir
+        input_files, input_format, n_cells, data_dir, round_sites
     )
     echo(
         "\nStoring methylation data in 'compressed "
@@ -102,7 +102,7 @@ def _get_cell_names(cov_files):
     return names
 
 
-def _dump_coo_files(fpaths, input_format, n_cells, output_dir):
+def _dump_coo_files(fpaths, input_format, n_cells, output_dir, round_sites):
     try:
         c_col, p_col, m_col, u_col, coverage, sep, header = _human_to_computer(
             input_format
@@ -123,9 +123,19 @@ def _dump_coo_files(fpaths, input_format, n_cells, output_dir):
             cov_file, c_col, p_col, m_col, u_col, coverage, sep, header
         ):
             chrom, genomic_pos, n_meth, n_unmeth = line_vals
+
+            # deal with unexpected CpG sites that are not 1 or 0. These could be
+            # caused by mapping artifacts, strand/allele-specific methylation, etc:
             if n_meth != 0 and n_unmeth != 0:
-                continue  # currently we ignore all CpGs that are not "clear"!
-            meth_value = 1 if n_meth > 0 else -1
+                if round_sites:
+                    if n_meth == n_unmeth:
+                        continue  # if it's 50:50, ignore this CpG
+                    meth_value = 1 if n_meth > n_unmeth else -1
+                else:
+                    continue  # ignore all CpGs that are not "clear"!
+            else:
+                meth_value = 1 if n_meth > 0 else -1
+
             if chrom not in coo_files:
                 coo_path = os.path.join(output_dir, f"{chrom}.coo")
                 coo_files[chrom] = open(coo_path, "w")
@@ -174,7 +184,7 @@ def _human_to_computer(file_format):
     """Convert the human-readable input file format to a tuple."""
     if ":" in file_format:
         return create_custom_format(file_format).totuple()
-    return create_standard_format(file_format).totuple()
+    return _create_standard_format(file_format).totuple()
 
 
 def _write_summary_stats(data_dir, cell_names, n_obs, n_meth):
@@ -244,7 +254,7 @@ def create_custom_format(format_string):
     return CoverageFormat(chrom, pos, meth, umeth, coverage, sep, header)
 
 
-def create_standard_format(format_name):
+def _create_standard_format(format_name):
     """Create a format object on the basis of the format name."""
     format_name = format_name.lower()  # ignore case
     if format_name in ("bismarck", "bismark"):
