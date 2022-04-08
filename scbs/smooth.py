@@ -9,6 +9,9 @@ from numba import njit
 
 from .utils import echo, secho
 
+# ignore division by 0 and division by NaN error
+np.seterr(divide="ignore", invalid="ignore")
+
 
 class Smoother(object):
     def __init__(self, sparse_mat, bandwidth=1000, weigh=False):
