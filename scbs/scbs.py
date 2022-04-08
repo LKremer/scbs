@@ -27,7 +27,11 @@ def _output_file_handle(raw_path):
 
 @njit
 def _find_peaks(smoothed_vars, swindow_centers, var_cutoff, half_bw):
-    """ " variance peak calling"""
+    """
+    After we calculated the variance for each window, this function
+    merges overlapping windows above a variance threshold (var_cutoff).
+    Returns the start and end coordinates of the bigger merged peaks.
+    """
     peak_starts = []
     peak_ends = []
     in_peak = False
@@ -66,7 +70,13 @@ def _move_windows(
     n_cells,
     chrom_len,
 ):
-    # shift windows along the chromosome and calculate the variance for each window.
+    """
+    Move the sliding window along the whole chromosome.
+    For each window, calculate the mean shrunken residuals,
+    i.e. 1 methylation value per cell for that window. Then
+    calculate the variance of shrunken residuals. This is our
+    measure of methylation variability for that window.
+    """
     windows = np.arange(start, end, stepsize)
     smoothed_var = np.empty(windows.shape, dtype=np.float64)
     for i in prange(windows.shape[0]):
@@ -85,22 +95,6 @@ def _move_windows(
     return windows, smoothed_var
 
 
-# currently not needed but could be useful:
-# @njit
-# def _count_n_cells(region_indices):
-#     """
-#     Count the total number of CpGs in a region, based on CSR matrix indices.
-#     Only CpGs that have coverage in at least 1 cell are counted.
-#     """
-#     seen_cells = set()
-#     n_cells = 0
-#     for cell_idx in region_indices:
-#         if cell_idx not in seen_cells:
-#             seen_cells.add(cell_idx)
-#             n_cells += 1
-#     return n_cells
-
-
 def scan(data_dir, output, bandwidth, stepsize, var_threshold, threads=-1):
     if threads != -1:
         numba.set_num_threads(threads)
@@ -112,15 +106,14 @@ def scan(data_dir, output, bandwidth, stepsize, var_threshold, threads=-1):
         key=lambda x: os.path.getsize(x),
         reverse=True,
     )
-    # will be discovered on the largest chromosome based on X% cutoff
+
+    # the variance threshold will be determined based on the largest chromosome.
+    # by default, we take the 98th percentile of all window variances.
     var_threshold_value = None
     for mat_path in chrom_paths:
         chrom = os.path.basename(os.path.splitext(mat_path)[0])
         mat = _load_chrom_mat(data_dir, chrom)
         smoothed_cpg_vals = _load_smoothed_chrom(data_dir, chrom)
-        # n_obs = mat.getnnz(axis=1)
-        # n_meth = np.ravel(np.sum(mat > 0, axis=1))
-        # mfracs = np.divide(n_meth, n_obs)
         chrom_len, n_cells = mat.shape
         cpg_pos_chrom = np.nonzero(mat.getnnz(axis=1))[0]
 
@@ -128,8 +121,8 @@ def scan(data_dir, output, bandwidth, stepsize, var_threshold, threads=-1):
             echo(f"Scanning chromosome {chrom} using {n_threads} parallel threads ...")
         else:
             echo(f"Scanning chromosome {chrom} ...")
-        # slide windows along the chromosome and calculate the mean
-        # shrunken variance of residuals for each window.
+        # slide windows along the chromosome and calculate the variance of
+        # mean shrunken residuals for each window.
         start = cpg_pos_chrom[0] + half_bw + 1
         end = cpg_pos_chrom[-1] - half_bw - 1
         genomic_positions, window_variances = _move_windows(
@@ -150,10 +143,14 @@ def scan(data_dir, output, bandwidth, stepsize, var_threshold, threads=-1):
             var_threshold_value = np.nanquantile(window_variances, 1 - var_threshold)
             echo(f"Determined the variance threshold of {var_threshold_value}.")
 
+        # merge overlapping windows with high variance, to get bigger regions
+        # of variable size
         peak_starts, peak_ends = _find_peaks(
             window_variances, genomic_positions, var_threshold_value, half_bw
         )
 
+        # for each big merged peak, re-calculate the variance and
+        # write it to a file.
         for ps, pe in zip(peak_starts, peak_ends):
             peak_var = np.nanvar(
                 _calc_mean_shrunken_residuals(
@@ -180,3 +177,19 @@ def scan(data_dir, output, bandwidth, stepsize, var_threshold, threads=-1):
                 fg="red",
             )
     return
+
+
+# currently not needed but could be useful:
+# @njit
+# def _count_n_cells(region_indices):
+#     """
+#     Count the total number of CpGs in a region, based on CSR matrix indices.
+#     Only CpGs that have coverage in at least 1 cell are counted.
+#     """
+#     seen_cells = set()
+#     n_cells = 0
+#     for cell_idx in region_indices:
+#         if cell_idx not in seen_cells:
+#             seen_cells.add(cell_idx)
+#             n_cells += 1
+#     return n_cells
