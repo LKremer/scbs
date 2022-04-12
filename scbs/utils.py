@@ -84,8 +84,9 @@ def _check_data_dir(data_dir, assert_smoothed=False):
     npz_files = glob(os.path.join(data_dir, "*.npz"))
     if not len(npz_files):
         raise Exception(
-            f"Your specified DATA_DIR '{data_dir}' does not contain a single chromosome"
-            ". Chromosome files end in '.npz' and can be created with 'scbs prepare'."
+            f"Your specified DATA_DIR '{data_dir}' is invalid since it does not "
+            "contain a single chromosome file. Chromosome files end in '.npz' "
+            "and can be created with 'scbs prepare'."
         )
     if assert_smoothed:
         smooth_files = glob(os.path.join(data_dir, "smoothed", "*.csv"))
