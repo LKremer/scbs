@@ -82,16 +82,16 @@ def _check_data_dir(data_dir, assert_smoothed=False):
     did not specify an empty directory
     """
     npz_files = glob(os.path.join(data_dir, "*.npz"))
-    if not len(npz_files):
+    if not npz_files:
         raise Exception(
             f"Your specified DATA_DIR '{data_dir}' is invalid since it does not "
-            "contain a single chromosome file. Chromosome files end in '.npz' "
-            "and can be created with 'scbs prepare'."
+            "contain any chromosome files.\n           Chromosome files "
+            "end in '.npz' and are automatically created by 'scbs prepare'."
         )
     if assert_smoothed:
         smooth_files = glob(os.path.join(data_dir, "smoothed", "*.csv"))
-        if not len(smooth_files):
+        if not smooth_files:
             raise Exception(
-                f"Your specified DATA_DIR '{data_dir}' is not smoothed yet. "
-                "Please smooth your data with 'scbs smooth'."
+                f"Your specified DATA_DIR '{data_dir}' is not smoothed yet."
+                "\n           Please smooth your data with 'scbs smooth'."
             )
