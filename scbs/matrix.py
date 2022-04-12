@@ -2,7 +2,14 @@ import numpy as np
 
 from .numerics import _calc_mean_shrunken_residuals, _calc_region_stats
 from .smooth import _load_smoothed_chrom
-from .utils import _iter_bed, _load_chrom_mat, _parse_cell_names, echo, secho
+from .utils import (
+    _check_data_dir,
+    _iter_bed,
+    _load_chrom_mat,
+    _parse_cell_names,
+    echo,
+    secho,
+)
 
 
 def matrix(
@@ -11,6 +18,7 @@ def matrix(
     output,
     keep_other_columns=False,
 ):
+    _check_data_dir(data_dir, assert_smoothed=True)
     output_header = [
         "chromosome",
         "start",

@@ -1,6 +1,6 @@
-import glob
 import gzip
 import os
+from glob import glob
 
 import numba
 import numpy as np
@@ -8,7 +8,7 @@ from numba import njit, prange
 
 from .numerics import _calc_mean_shrunken_residuals
 from .smooth import _load_smoothed_chrom
-from .utils import _load_chrom_mat, echo, secho
+from .utils import _check_data_dir, _load_chrom_mat, echo, secho
 
 # ignore division by 0 and division by NaN error
 np.seterr(divide="ignore", invalid="ignore")
@@ -96,13 +96,14 @@ def _move_windows(
 
 
 def scan(data_dir, output, bandwidth, stepsize, var_threshold, threads=-1):
+    _check_data_dir(data_dir, assert_smoothed=True)
     if threads != -1:
         numba.set_num_threads(threads)
     n_threads = numba.get_num_threads()
     half_bw = bandwidth // 2
     # sort chroms by filesize. We start with largest chrom to find the var threshold
     chrom_paths = sorted(
-        glob.glob(os.path.join(data_dir, "*.npz")),
+        glob(os.path.join(data_dir, "*.npz")),
         key=lambda x: os.path.getsize(x),
         reverse=True,
     )

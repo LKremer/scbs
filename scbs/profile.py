@@ -3,6 +3,7 @@ import pandas as pd
 from statsmodels.stats.proportion import proportion_confint
 
 from .utils import (
+    _check_data_dir,
     _get_filepath,
     _iter_bed,
     _load_chrom_mat,
@@ -16,6 +17,7 @@ def profile(data_dir, regions, output, width, strand_column, label):
     """
     see 'scbs profile --help'
     """
+    _check_data_dir(data_dir)
     cell_names = _parse_cell_names(data_dir)
     extend_by = width // 2
     n_regions = 0  # count the total number of valid regions in the bed file

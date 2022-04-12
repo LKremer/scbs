@@ -1,10 +1,10 @@
-import glob
 import os
 from csv import DictReader
+from glob import glob
 
 import scipy.sparse as sp_sparse
 
-from .utils import _get_filepath, _load_chrom_mat, echo, secho
+from .utils import _check_data_dir, _get_filepath, _load_chrom_mat, echo, secho
 
 
 def _filter_by_name(file, cell_stats_path, keep=True):
@@ -81,6 +81,7 @@ def _filter_text_file(fpath, rows_to_keep, fpath_out, header=False):
 def filter_(
     data_dir, filtered_dir, min_sites, max_sites, min_meth, max_meth, cell_names, keep
 ):
+    _check_data_dir(data_dir)
     stats_path = os.path.join(data_dir, "cell_stats.csv")
     stats_path_out = os.path.join(filtered_dir, "cell_stats.csv")
     colname_path = os.path.join(data_dir, "column_header.txt")
@@ -106,7 +107,7 @@ def filter_(
         )
 
     os.makedirs(filtered_dir, exist_ok=True)
-    chrom_paths = glob.glob(os.path.join(data_dir, "*.npz"))
+    chrom_paths = glob(os.path.join(data_dir, "*.npz"))
     for mat_path in sorted(chrom_paths):
         chrom = os.path.basename(os.path.splitext(mat_path)[0])
         mat = _load_chrom_mat(data_dir, chrom)

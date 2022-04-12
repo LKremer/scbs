@@ -7,12 +7,14 @@ repos:
     rev: 22.1.0
     hooks:
       - id: black
-        exclude: "benchmarks"
+        name: black
+        entry: poetry run black scbs
 
   - repo: https://github.com/timothycrosley/isort
     rev: 5.10.1
     hooks:
       - id: isort
+        name: isort
         exclude: "benchmarks"
 
   - repo: https://gitlab.com/pycqa/flake8

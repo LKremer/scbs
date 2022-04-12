@@ -1,5 +1,5 @@
-import glob
 import os
+from glob import glob
 
 import numba
 import numpy as np
@@ -7,7 +7,7 @@ import pandas as pd
 import scipy.sparse as sp_sparse
 from numba import njit
 
-from .utils import echo, secho
+from .utils import _check_data_dir, echo, secho
 
 # ignore division by 0 and division by NaN error
 np.seterr(divide="ignore", invalid="ignore")
@@ -18,7 +18,7 @@ class Smoother(object):
         # create the tricube kernel
         self.hbw = bandwidth // 2
         rel_dist = np.abs((np.arange(bandwidth) - self.hbw) / self.hbw)
-        self.kernel = (1 - (rel_dist**3)) ** 3
+        self.kernel = (1 - (rel_dist ** 3)) ** 3
         # calculate (unsmoothed) methylation fraction across the chromosome
         n_obs = sparse_mat.getnnz(axis=1)
         n_meth = np.ravel(np.sum(sparse_mat > 0, axis=1))
@@ -51,9 +51,10 @@ class Smoother(object):
 
 
 def smooth(data_dir, bandwidth, use_weights):
+    _check_data_dir(data_dir)
     out_dir = os.path.join(data_dir, "smoothed")
     os.makedirs(out_dir, exist_ok=True)
-    for mat_path in sorted(glob.glob(os.path.join(data_dir, "*.npz"))):
+    for mat_path in sorted(glob(os.path.join(data_dir, "*.npz"))):
         chrom = os.path.basename(os.path.splitext(mat_path)[0])
         echo(f"Reading chromosome {chrom} data from {mat_path} ...")
         mat = sp_sparse.load_npz(mat_path)
