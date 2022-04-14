@@ -115,7 +115,7 @@ def profile(data_dir, regions, output, width, strand_column, label):
 
 def _redefine_bed_regions(start, end, extend_by):
     """
-    truncates or extend_bys a region to match the desired length
+    truncates or extends a region to match the desired length
     """
     center = (start + end) // 2  # take center of region
     new_start = center - extend_by  # bounds = center += half region size
