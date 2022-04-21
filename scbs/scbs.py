@@ -5,6 +5,8 @@ from glob import glob
 import numba
 import numpy as np
 from numba import njit, prange
+import pandas as pd
+import math
 
 from .numerics import _calc_mean_shrunken_residuals
 from .smooth import _load_smoothed_chrom
@@ -25,7 +27,7 @@ def _output_file_handle(raw_path):
     return handle
 
 
-@njit
+#@njit
 def _find_peaks(smoothed_vars, swindow_centers, var_cutoff, half_bw):
     """
     After we calculated the variance for each window, this function
@@ -56,8 +58,15 @@ def _find_peaks(smoothed_vars, swindow_centers, var_cutoff, half_bw):
     assert len(peak_starts) == len(peak_ends)
     return peak_starts, peak_ends
 
+def welch_t_test(group1, group2, len_group1, len_group2):
+    s2_group1 = np.nanvar(group1)
+    s2_group2 = np.nanvar(group2)
+    s_delta = math.sqrt(s2_group1/len_group1 + s2_group2/len_group2)
+    t = (np.nanmean(group1) - np.nanmean(group2)) / s_delta
+    df = (s2_group1/len_group1 + s2_group2/len_group2)**2 / ((s2_group1/len_group1)**2/(len_group1-1)) + ((s2_group2/len_group2)**2/(len_group2-1))
+    return t, s_delta, df
 
-@njit(parallel=True)
+#@njit(parallel=True)
 def _move_windows(
     start,
     end,
@@ -69,6 +78,8 @@ def _move_windows(
     smoothed_vals,
     n_cells,
     chrom_len,
+    group1_index,
+    group2_index
 ):
     """
     Move the sliding window along the whole chromosome.
@@ -78,7 +89,9 @@ def _move_windows(
     measure of methylation variability for that window.
     """
     windows = np.arange(start, end, stepsize)
-    smoothed_var = np.empty(windows.shape, dtype=np.float64)
+    t = np.empty(windows.shape, dtype=np.float64)
+    s_delta = np.empty(windows.shape, dtype=np.float64)
+    df = np.empty(windows.shape, dtype=np.float64)
     for i in prange(windows.shape[0]):
         pos = windows[i]
         mean_shrunk_resid = _calc_mean_shrunken_residuals(
@@ -91,11 +104,33 @@ def _move_windows(
             n_cells,
             chrom_len,
         )
-        smoothed_var[i] = np.nanvar(mean_shrunk_resid)
-    return windows, smoothed_var
+
+        group1 = mean_shrunk_resid[group1_index.flatten()]
+        group2 = mean_shrunk_resid[group2_index.flatten()]
+
+        len_group1 = np.count_nonzero(~np.isnan(group1))
+        len_group2 = np.count_nonzero(~np.isnan(group2))
+
+        t_test = welch_t_test(group1, group2, len_group1, len_group2)
+        print(t_test[0], t_test[1], t_test[2], pos)
+
+        #pos = np.where(windows == [i])
+        #t[pos[0]] = t_test[0]
+        #s_delta[pos[0]] = t_test[1]
+        #df[pos[0]] = t_test[2]
+
+    return ç, t, s_delta, df
 
 
 def scan(data_dir, output, bandwidth, stepsize, var_threshold, threads=-1):
+<<<<<<< Updated upstream
+=======
+    #exclude the following later on. uses pandas and it needs to be possible to chose groups
+    celltypes = pd.read_csv("/Users/marti/Documents/M-Thesis/documents-export-2022-04-06/all_celltypes.csv", sep=',')
+    celltypes = celltypes.to_numpy()
+    group1_index = celltypes == 'neuroblast'
+    group2_index = celltypes == 'oligodendrocyte'
+>>>>>>> Stashed changes
     _check_data_dir(data_dir, assert_smoothed=True)
     if threads != -1:
         numba.set_num_threads(threads)
@@ -137,6 +172,8 @@ def scan(data_dir, output, bandwidth, stepsize, var_threshold, threads=-1):
             smoothed_cpg_vals,
             n_cells,
             chrom_len,
+            group1_index,
+            group2_index
         )
 
         if var_threshold_value is None:
