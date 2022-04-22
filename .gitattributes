@@ -1,0 +1,7 @@
+*.html linguist-vendored
+*.ipynb linguist-vendored
+*.csv linguist-vendored
+*.svg linguist-vendored
+benchmarks/* linguist-vendored
+docs/* linguist-vendored
+dist/* linguist-vendored
