@@ -1,2 +1,0 @@
-python3 dim_reduction.py -f /mnt/o_drive/Leonie_K/20200407_neuro_subtypes/mouse/regions/scan/matrix_top3p.csv -v m_value -s feature -sa /mnt/o_drive/Leonie_K/temp/ -r 1000 5000 10000 25000 -rt var
-python3 pca_umap.py -f /mnt/o_drive/Leonie_K/20200407_neuro_subtypes/mouse/regions/scan/matrix_top3p.csv -v m_value -s feature -sa /mnt/o_drive/Leonie_K/temp/ -r 1000 5000 10000 25000 -rt var
