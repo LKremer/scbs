@@ -114,9 +114,9 @@ def _move_windows(
     measure of methylation variability for that window.
     """
     windows = np.arange(start, end, stepsize)
-    t_stat = np.empty(windows.shape, dtype=np.float64)
-    #s_delta = np.empty(windows.shape, dtype=np.float64)
-    #df = np.empty(windows.shape, dtype=np.float64)
+    t_array = np.empty(windows.shape, dtype=np.float64)
+    s_delta_array = np.empty(windows.shape, dtype=np.float64)
+    df_array = np.empty(windows.shape, dtype=np.float64)
     for i in prange(windows.shape[0]):
         pos = windows[i]
         mean_shrunk_resid = _calc_mean_shrunken_residuals(
@@ -137,34 +137,26 @@ def _move_windows(
         group2 = group2[~np.isnan(group2)]
 
         t, s_delta, df = welch_t_test(group1, group2)
+
+        #delete later
         print(t, s_delta, df, pos)
 
-        pos = np.where(windows == [i])
-        t_stat[pos[0]] = t
-        #s_delta[pos[0]] = t_test[1]
-        #df[pos[0]] = t_test[2]
+        t_array[i] = t
+        s_delta_array[i] = s_delta
+        df_array[i] = df
 
-    return windows, t_stat
+    #only returns t-statistic so far
+    return windows, t_array
 
 
 def scan(data_dir, output, bandwidth, stepsize, var_threshold, threads=-1):
-<<<<<<< HEAD
     
-=======
-
->>>>>>> a6f6958db27fa594ec6fcced15cf9760fdf1b2b7
     #exclude the following later on. uses pandas and it needs to be possible to chose groups
     celltypes = pd.read_csv("/Users/marti/Documents/M-Thesis/documents-export-2022-04-06/all_celltypes.csv", sep=',')
     celltypes = celltypes.to_numpy()
     group1_index = celltypes == 'neuroblast'
     group2_index = celltypes == 'oligodendrocyte'
-<<<<<<< HEAD
-    group1_index = group1_index.flatten()
-    group2_index = group2_index.flatten()
-    
-=======
 
->>>>>>> a6f6958db27fa594ec6fcced15cf9760fdf1b2b7
     _check_data_dir(data_dir, assert_smoothed=True)
     if threads != -1:
         numba.set_num_threads(threads)
