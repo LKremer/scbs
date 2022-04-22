@@ -148,15 +148,23 @@ def _move_windows(
 
 
 def scan(data_dir, output, bandwidth, stepsize, var_threshold, threads=-1):
+<<<<<<< HEAD
     
+=======
+
+>>>>>>> a6f6958db27fa594ec6fcced15cf9760fdf1b2b7
     #exclude the following later on. uses pandas and it needs to be possible to chose groups
     celltypes = pd.read_csv("/Users/marti/Documents/M-Thesis/documents-export-2022-04-06/all_celltypes.csv", sep=',')
     celltypes = celltypes.to_numpy()
     group1_index = celltypes == 'neuroblast'
     group2_index = celltypes == 'oligodendrocyte'
+<<<<<<< HEAD
     group1_index = group1_index.flatten()
     group2_index = group2_index.flatten()
     
+=======
+
+>>>>>>> a6f6958db27fa594ec6fcced15cf9760fdf1b2b7
     _check_data_dir(data_dir, assert_smoothed=True)
     if threads != -1:
         numba.set_num_threads(threads)
