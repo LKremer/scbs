@@ -27,7 +27,7 @@ def _output_file_handle(raw_path):
     return handle
 
 
-#@njit
+@njit
 def _find_peaks(smoothed_vars, swindow_centers, var_cutoff, half_bw):
     """
     After we calculated the variance for each window, this function
@@ -58,12 +58,37 @@ def _find_peaks(smoothed_vars, swindow_centers, var_cutoff, half_bw):
     assert len(peak_starts) == len(peak_ends)
     return peak_starts, peak_ends
 
-def welch_t_test(group1, group2, len_group1, len_group2):
-    s2_group1 = np.nanvar(group1)
-    s2_group2 = np.nanvar(group2)
-    s_delta = math.sqrt(s2_group1/len_group1 + s2_group2/len_group2)
-    t = (np.nanmean(group1) - np.nanmean(group2)) / s_delta
-    df = (s2_group1/len_group1 + s2_group2/len_group2)**2 / ((s2_group1/len_group1)**2/(len_group1-1)) + ((s2_group2/len_group2)**2/(len_group2-1))
+
+#@njit
+def welch_t_test(group1, group2):
+    len_g1 = len(group1)
+    len_g2 = len(group2)
+
+    if not len_g1 or not len_g2:
+        return np.nan, np.nan, np.nan
+
+    mean_g1 = np.mean(group1)
+    mean_g2 = np.mean(group2)
+
+    sum1 = 0
+    sum2 = 0
+
+    for value in group1:
+        sqdif1 = (value - mean_g1) ** 2
+        sum1 += sqdif1
+
+    for value in group2:
+        sqdif2 = (value - mean_g2) ** 2
+        sum2 += sqdif2
+
+    var_g1 = (sum1) / (len_g1 - 1)
+    var_g2 = (sum2) / (len_g2 - 1)
+
+    s_delta = math.sqrt(var_g1 / len_g1 + var_g2 / len_g2)
+    t = (mean_g1 - mean_g2) / s_delta
+    df = (var_g1 / len_g1 + var_g2 / len_g2) ** 2 / ((var_g1 / len_g1) ** 2 / (len_g1 - 1)) + (
+                (var_g2 / len_g2) ** 2 / (len_g2 - 1))
+
     return t, s_delta, df
 
 #@njit(parallel=True)
@@ -89,9 +114,9 @@ def _move_windows(
     measure of methylation variability for that window.
     """
     windows = np.arange(start, end, stepsize)
-    t = np.empty(windows.shape, dtype=np.float64)
-    s_delta = np.empty(windows.shape, dtype=np.float64)
-    df = np.empty(windows.shape, dtype=np.float64)
+    t_stat = np.empty(windows.shape, dtype=np.float64)
+    #s_delta = np.empty(windows.shape, dtype=np.float64)
+    #df = np.empty(windows.shape, dtype=np.float64)
     for i in prange(windows.shape[0]):
         pos = windows[i]
         mean_shrunk_resid = _calc_mean_shrunken_residuals(
@@ -105,32 +130,33 @@ def _move_windows(
             chrom_len,
         )
 
-        group1 = mean_shrunk_resid[group1_index.flatten()]
-        group2 = mean_shrunk_resid[group2_index.flatten()]
+        group1 = mean_shrunk_resid[group1_index]
+        group1 = group1[~np.isnan(group1)]
+        
+        group2 = mean_shrunk_resid[group2_index]
+        group2 = group2[~np.isnan(group2)]
 
-        len_group1 = np.count_nonzero(~np.isnan(group1))
-        len_group2 = np.count_nonzero(~np.isnan(group2))
+        t, s_delta, df = welch_t_test(group1, group2)
+        print(t, s_delta, df, pos)
 
-        t_test = welch_t_test(group1, group2, len_group1, len_group2)
-        print(t_test[0], t_test[1], t_test[2], pos)
-
-        #pos = np.where(windows == [i])
-        #t[pos[0]] = t_test[0]
+        pos = np.where(windows == [i])
+        t_stat[pos[0]] = t
         #s_delta[pos[0]] = t_test[1]
         #df[pos[0]] = t_test[2]
 
-    return ç, t, s_delta, df
+    return windows, t_stat
 
 
 def scan(data_dir, output, bandwidth, stepsize, var_threshold, threads=-1):
-<<<<<<< Updated upstream
-=======
+    
     #exclude the following later on. uses pandas and it needs to be possible to chose groups
     celltypes = pd.read_csv("/Users/marti/Documents/M-Thesis/documents-export-2022-04-06/all_celltypes.csv", sep=',')
     celltypes = celltypes.to_numpy()
     group1_index = celltypes == 'neuroblast'
     group2_index = celltypes == 'oligodendrocyte'
->>>>>>> Stashed changes
+    group1_index = group1_index.flatten()
+    group2_index = group2_index.flatten()
+    
     _check_data_dir(data_dir, assert_smoothed=True)
     if threads != -1:
         numba.set_num_threads(threads)
