@@ -58,20 +58,20 @@ def _find_peaks(smoothed_vars, swindow_centers, var_cutoff, half_bw):
     assert len(peak_starts) == len(peak_ends)
     return peak_starts, peak_ends
 
-
-#@njit
+@njit(nogil=True)
 def welch_t_test(group1, group2):
     len_g1 = len(group1)
+    if len_g1 < 2:
+        return np.nan, np.nan, np.nan
     len_g2 = len(group2)
-
-    if not len_g1 or not len_g2:
+    if len_g2 < 2:
         return np.nan, np.nan, np.nan
 
     mean_g1 = np.mean(group1)
     mean_g2 = np.mean(group2)
 
-    sum1 = 0
-    sum2 = 0
+    sum1 = 0.0
+    sum2 = 0.0
 
     for value in group1:
         sqdif1 = (value - mean_g1) ** 2
@@ -81,17 +81,22 @@ def welch_t_test(group1, group2):
         sqdif2 = (value - mean_g2) ** 2
         sum2 += sqdif2
 
-    var_g1 = (sum1) / (len_g1 - 1)
-    var_g2 = (sum2) / (len_g2 - 1)
+    if sum1 == 0.0 and sum2 == 0.0:
+        return np.nan, np.nan, np.nan
+
+    var_g1 = sum1 / (len_g1 - 1)
+    var_g2 = sum2 / (len_g2 - 1)
 
     s_delta = math.sqrt(var_g1 / len_g1 + var_g2 / len_g2)
     t = (mean_g1 - mean_g2) / s_delta
-    df = (var_g1 / len_g1 + var_g2 / len_g2) ** 2 / ((var_g1 / len_g1) ** 2 / (len_g1 - 1)) + (
-                (var_g2 / len_g2) ** 2 / (len_g2 - 1))
+
+    numerator = (var_g1 / len_g1 + var_g2 / len_g2) ** 2
+    denominator = ((var_g1 / len_g1) ** 2 / (len_g1 - 1)) + ((var_g2 / len_g2) ** 2 / (len_g2 - 1))
+    df = numerator / denominator
 
     return t, s_delta, df
 
-#@njit(parallel=True)
+@njit(parallel=True)
 def _move_windows(
     start,
     end,
@@ -152,10 +157,9 @@ def _move_windows(
 def scan(data_dir, output, bandwidth, stepsize, var_threshold, threads=-1):
     
     #exclude the following later on. uses pandas and it needs to be possible to chose groups
-    celltypes = pd.read_csv("/Users/marti/Documents/M-Thesis/documents-export-2022-04-06/all_celltypes.csv", sep=',')
-    celltypes = celltypes.to_numpy()
-    group1_index = celltypes == 'neuroblast'
-    group2_index = celltypes == 'oligodendrocyte'
+    celltypes = pd.read_csv(os.path.join(data_dir, "celltypes.txt"), header=None).to_numpy()
+    group1_index = (celltypes == 'neuroblast').flatten()
+    group2_index = (celltypes == 'oligodendrocyte').flatten()
 
     _check_data_dir(data_dir, assert_smoothed=True)
     if threads != -1:
@@ -202,6 +206,7 @@ def scan(data_dir, output, bandwidth, stepsize, var_threshold, threads=-1):
             group2_index
         )
 
+        """
         if var_threshold_value is None:
             # this is the first=biggest chrom, so let's find our variance threshold here
             var_threshold_value = np.nanquantile(window_variances, 1 - var_threshold)
@@ -240,6 +245,7 @@ def scan(data_dir, output, bandwidth, stepsize, var_threshold, threads=-1):
                 f"Found no variable regions on chromosome {chrom}.",
                 fg="red",
             )
+        """
     return
 
 
