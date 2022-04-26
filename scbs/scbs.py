@@ -98,6 +98,7 @@ def welch_t_test(group1, group2):
 
 @njit(parallel=True)
 def _move_windows(
+    chrom,
     start,
     end,
     stepsize,
@@ -143,12 +144,13 @@ def _move_windows(
 
         t, s_delta, df = welch_t_test(group1, group2)
 
-        #delete later
-        print(t, s_delta, df, pos)
-
         t_array[i] = t
         s_delta_array[i] = s_delta
         df_array[i] = df
+
+    #delete later
+    for i in range(windows.shape[0]):
+        print(chrom, t_array[i], s_delta_array[i], df_array[i], windows[i])
 
     #only returns t-statistic so far
     return windows, t_array
@@ -192,6 +194,7 @@ def scan(data_dir, output, bandwidth, stepsize, var_threshold, threads=-1):
         start = cpg_pos_chrom[0] + half_bw + 1
         end = cpg_pos_chrom[-1] - half_bw - 1
         genomic_positions, window_variances = _move_windows(
+            chrom,  # delete later
             start,
             end,
             stepsize,
