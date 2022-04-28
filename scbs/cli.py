@@ -280,9 +280,9 @@ def smooth_cli(**kwargs):
     timer.stop()
 
 
-# scan command
+# diff command
 @cli.command(
-    name="scan",
+    name="diff",
     help=f"""
     Scans the whole genome for regions of variable methylation. This works by sliding
     a window across the genome, calculating the variance of methylation per window,
@@ -302,7 +302,8 @@ def smooth_cli(**kwargs):
     "data-dir",
     type=click.Path(exists=True, dir_okay=True, file_okay=False, readable=True),
 )
-@click.argument("output", type=click.File("w"))
+@click.argument("output1", type=click.File("w"))
+@click.argument("output2", type=click.File("w"))
 @click.option(
     "-bw",
     "--bandwidth",
@@ -321,7 +322,7 @@ def smooth_cli(**kwargs):
     help="Step size of the variance windows in basepairs.",
 )
 @click.option(
-    "--var-threshold",
+    "--threshold",
     default=0.02,
     show_default=True,
     type=click.FloatRange(min=0, max=1),
@@ -336,12 +337,12 @@ def smooth_cli(**kwargs):
     help="How many CPU threads to use in parallel.  [default: all available]",
     callback=_set_n_threads,
 )
-def scan_cli(**kwargs):
-    from .scbs import scan
+def diff_cli(**kwargs):
+    from .scbs import diff
 
-    timer = Timer(label="scan")
+    timer = Timer(label="diff")
     _print_kwargs(kwargs)
-    scan(**kwargs)
+    diff(**kwargs)
     timer.stop()
 
 

@@ -149,14 +149,14 @@ def _move_windows(
         df_array[i] = df
 
     #delete later
-    for i in range(windows.shape[0]):
-        print(chrom, t_array[i], s_delta_array[i], df_array[i], windows[i])
+    #for i in range(windows.shape[0]):
+        #print(chrom, t_array[i], s_delta_array[i], df_array[i], windows[i])
 
     #only returns t-statistic so far
     return windows, t_array
 
 
-def scan(data_dir, output, bandwidth, stepsize, var_threshold, threads=-1):
+def diff(data_dir, output1, output2, bandwidth, stepsize, threshold, threads=-1):
     
     #exclude the following later on. uses pandas and it needs to be possible to chose groups
     celltypes = pd.read_csv(os.path.join(data_dir, "celltypes.txt"), header=None).to_numpy()
@@ -177,7 +177,6 @@ def scan(data_dir, output, bandwidth, stepsize, var_threshold, threads=-1):
 
     # the variance threshold will be determined based on the largest chromosome.
     # by default, we take the 98th percentile of all window variances.
-    var_threshold_value = None
     for mat_path in chrom_paths:
         chrom = os.path.basename(os.path.splitext(mat_path)[0])
         mat = _load_chrom_mat(data_dir, chrom)
@@ -193,7 +192,7 @@ def scan(data_dir, output, bandwidth, stepsize, var_threshold, threads=-1):
         # mean shrunken residuals for each window.
         start = cpg_pos_chrom[0] + half_bw + 1
         end = cpg_pos_chrom[-1] - half_bw - 1
-        genomic_positions, window_variances = _move_windows(
+        genomic_positions, window_tstat = _move_windows(
             chrom,  # delete later
             start,
             end,
@@ -209,46 +208,58 @@ def scan(data_dir, output, bandwidth, stepsize, var_threshold, threads=-1):
             group2_index
         )
 
-        """
-        if var_threshold_value is None:
-            # this is the first=biggest chrom, so let's find our variance threshold here
-            var_threshold_value = np.nanquantile(window_variances, 1 - var_threshold)
-            echo(f"Determined the variance threshold of {var_threshold_value}.")
+        # calculate t-statistic for group1 (low t-values) and group 2 (high t-values)
+        # to make this possible the t-stat was multiplied by -1 for group1
+        window_tstat_groups = [window_tstat * -1, window_tstat]
+        # change later!
+        groups = ['neuroblast', 'oligodendrocyte']
+        outputs = [output1, output2]
+        for tstat_windows, group, output in zip(window_tstat_groups, groups, outputs):
+            # this is the first=biggest chrom, so let's find our t-statistic threshold here
+            threshold_value = np.nanquantile(tstat_windows, 1 - threshold)
+            echo(f"Determined the variance threshold of {threshold_value}.")
 
-        # merge overlapping windows with high variance, to get bigger regions
-        # of variable size
-        peak_starts, peak_ends = _find_peaks(
-            window_variances, genomic_positions, var_threshold_value, half_bw
-        )
+            # merge overlapping windows with lowest and highest t-statistic, to get bigger regions
+            # of variable size
+            peak_starts, peak_ends = _find_peaks(
+            tstat_windows, genomic_positions, threshold_value, half_bw
+            )
 
-        # for each big merged peak, re-calculate the variance and
-        # write it to a file.
-        for ps, pe in zip(peak_starts, peak_ends):
-            peak_var = np.nanvar(
-                _calc_mean_shrunken_residuals(
-                    mat.data,
-                    mat.indices,
-                    mat.indptr,
-                    ps,
-                    pe,
-                    smoothed_cpg_vals,
-                    n_cells,
-                    chrom_len,
+            # for each big merged peak, re-calculate the t-statistic and
+            # write it to a file.
+
+            for ps, pe in zip(peak_starts, peak_ends):
+                mean_shrunk_resid =_calc_mean_shrunken_residuals(
+                        mat.data,
+                        mat.indices,
+                        mat.indptr,
+                        ps,
+                        pe,
+                        smoothed_cpg_vals,
+                        n_cells,
+                        chrom_len,
+                    )
+                group1 = mean_shrunk_resid[group1_index]
+                group1 = group1[~np.isnan(group1)]
+
+                group2 = mean_shrunk_resid[group2_index]
+                group2 = group2[~np.isnan(group2)]
+
+                t_stat, s_delta, df = welch_t_test(group1, group2)
+
+                bed_entry = f"{chrom}\t{ps}\t{pe}\t{t_stat}\n"
+                output.write(bed_entry)
+
+            if len(peak_starts) > 0:
+                secho(
+                    f"Found {len(peak_starts)} differential regions on chromosome {chrom} for {group}.",
+                    fg="green",
                 )
-            )
-            bed_entry = f"{chrom}\t{ps}\t{pe}\t{peak_var}\n"
-            output.write(bed_entry)
-        if len(peak_starts) > 0:
-            secho(
-                f"Found {len(peak_starts)} variable regions on chromosome {chrom}.",
-                fg="green",
-            )
-        else:
-            secho(
-                f"Found no variable regions on chromosome {chrom}.",
-                fg="red",
-            )
-        """
+            else:
+                secho(
+                    f"Found no differential regions on chromosome {chrom} for {group}.",
+                    fg="red",
+                )
     return
 
 
