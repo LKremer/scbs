@@ -1,3 +1,4 @@
+
 import gzip
 import os
 from glob import glob
@@ -7,6 +8,7 @@ import numpy as np
 from numba import njit, prange
 import pandas as pd
 import math
+import random
 
 from .numerics import _calc_mean_shrunken_residuals
 from .smooth import _load_smoothed_chrom
@@ -26,6 +28,37 @@ def _output_file_handle(raw_path):
         handle = open(raw_path + ".csv", "w")
     return handle
 
+def permuted_indices(number, celltypes, cells):
+    indices_g1 = []
+    indices_g2 = []
+    for permutation in range(number):
+        permutation = np.random.permutation(celltypes)
+        for cell in range(len(cells)):
+            index = (permutation == cells[cell]).flatten()
+            if cell == 0:
+                indices_g1.append(index)
+            else:
+                indices_g2.append(index)
+    return indices_g1, indices_g2
+
+@njit
+def calc_fdr_jit(datatype):
+    fdisc = 0
+    tdisc = 0
+    count = 0
+    adj_p_val_arr = np.empty(datatype.shape, dtype=np.float64)
+
+    for i in range(len(datatype)):
+        if datatype[i]:
+            tdisc += 1
+
+        else:
+            fdisc += 1
+
+        adj_p_val = fdisc / (fdisc + tdisc)
+        adj_p_val_arr[i] = adj_p_val
+
+    return adj_p_val_arr
 
 @njit
 def _find_peaks(smoothed_vars, swindow_centers, var_cutoff, half_bw):
@@ -59,12 +92,12 @@ def _find_peaks(smoothed_vars, swindow_centers, var_cutoff, half_bw):
     return peak_starts, peak_ends
 
 @njit(nogil=True)
-def welch_t_test(group1, group2):
+def welch_t_test(group1, group2, length):
     len_g1 = len(group1)
-    if len_g1 < 2:
+    if len_g1 < length:
         return np.nan, np.nan, np.nan
     len_g2 = len(group2)
-    if len_g2 < 2:
+    if len_g2 < length:
         return np.nan, np.nan, np.nan
 
     mean_g1 = np.mean(group1)
@@ -98,7 +131,6 @@ def welch_t_test(group1, group2):
 
 @njit(parallel=True)
 def _move_windows(
-    chrom,
     start,
     end,
     stepsize,
@@ -110,7 +142,8 @@ def _move_windows(
     n_cells,
     chrom_len,
     group1_index,
-    group2_index
+    group2_index,
+    length
 ):
     """
     Move the sliding window along the whole chromosome.
@@ -121,8 +154,6 @@ def _move_windows(
     """
     windows = np.arange(start, end, stepsize)
     t_array = np.empty(windows.shape, dtype=np.float64)
-    s_delta_array = np.empty(windows.shape, dtype=np.float64)
-    df_array = np.empty(windows.shape, dtype=np.float64)
     for i in prange(windows.shape[0]):
         pos = windows[i]
         mean_shrunk_resid = _calc_mean_shrunken_residuals(
@@ -142,26 +173,109 @@ def _move_windows(
         group2 = mean_shrunk_resid[group2_index]
         group2 = group2[~np.isnan(group2)]
 
-        t, s_delta, df = welch_t_test(group1, group2)
+        t, s_delta, df = welch_t_test(group1, group2, length)
 
         t_array[i] = t
-        s_delta_array[i] = s_delta
-        df_array[i] = df
 
-    #delete later
-    #for i in range(windows.shape[0]):
-        #print(chrom, t_array[i], s_delta_array[i], df_array[i], windows[i])
-
-    #only returns t-statistic so far
     return windows, t_array
 
+def calc_tstat_peaks(
+        threshold,
+        chrom,
+        datatype,
+        cells,
+        cpg_pos_chrom,
+        stepsize,
+        half_bw,
+        data_chrom,
+        indices_chrom,
+        indptr_chrom,
+        smoothed_vals,
+        n_cells,
+        chrom_len,
+        group1_index,
+        group2_index,
+        length,
+        threshold_values
+):
+    output = []
+    for i in range(6):
+        array = np.empty(0)
+        output.append(array)
 
-def diff(data_dir, output1, output2, bandwidth, stepsize, threshold, threads=-1):
-    
+    start = cpg_pos_chrom[0] + half_bw + 1
+    end = cpg_pos_chrom[-1] - half_bw - 1
+    genomic_positions, window_tstat = _move_windows(
+        start,
+        end,
+        stepsize,
+        half_bw,
+        data_chrom,
+        indices_chrom,
+        indptr_chrom,
+        smoothed_vals,
+        n_cells,
+        chrom_len,
+        group1_index,
+        group2_index,
+        length
+    )
+
+    window_tstat_groups = [window_tstat * -1, window_tstat]
+    # calculate t-statistic for group1 (low t-values) and group 2 (high t-values)
+    # to make this possible the t-stat was multiplied by -1 for group1
+    for tstat_windows, cell in zip(window_tstat_groups, cells):
+        if len(threshold_values) < 2:
+        # this is the first=biggest chrom, so let's find our t-statistic threshold here
+            threshold_value = np.nanquantile(tstat_windows, 1 - threshold)
+            echo(f"Determined the variance threshold of {threshold_value} for {cell}.")
+            threshold_values.append(threshold_value)
+
+    for tstat_windows, cell, threshold_value in zip(window_tstat_groups, cells, threshold_values):
+        # merge overlapping windows with lowest and highest t-statistic, to get bigger regions
+        # of variable size
+        peak_starts, peak_ends = _find_peaks(
+            tstat_windows, genomic_positions, threshold_value, half_bw
+        )
+
+        # for each big merged peak, re-calculate the t-statistic
+        for ps, pe in zip(peak_starts, peak_ends):
+            mean_shrunk_resid = _calc_mean_shrunken_residuals(
+                data_chrom,
+                indices_chrom,
+                indptr_chrom,
+                ps,
+                pe,
+                smoothed_vals,
+                n_cells,
+                chrom_len,
+            )
+            group1 = mean_shrunk_resid[group1_index]
+            group1 = group1[~np.isnan(group1)]
+
+            group2 = mean_shrunk_resid[group2_index]
+            group2 = group2[~np.isnan(group2)]
+
+            t_stat, s_delta, df = welch_t_test(group1, group2, length)
+
+            datapoints = [chrom, ps, pe, t_stat, datatype, cell]
+
+            for datapoint in range(len(datapoints)):
+                output[datapoint] = np.append(output[datapoint], datapoints[datapoint])
+
+    return output
+
+def diff(data_dir, output1, output2, bandwidth, stepsize, threshold, length = 3, threads=-1):
     #exclude the following later on. uses pandas and it needs to be possible to chose groups
     celltypes = pd.read_csv(os.path.join(data_dir, "celltypes.txt"), header=None).to_numpy()
-    group1_index = (celltypes == 'neuroblast').flatten()
-    group2_index = (celltypes == 'oligodendrocyte').flatten()
+    cells = ['neuroblast', 'oligodendrocyte']
+    # maybe for loop to calc indices and permutations
+    group1_index = (celltypes == cells[0]).flatten()
+    group2_index = (celltypes == cells[1]).flatten()
+
+    # get indices for both groups from five permutations
+    number = 5 #number of permutations, change later. either fixed or argument in diff
+    perm_indices_g1, perm_indices_g2 = permuted_indices(number, celltypes, cells) #change number of permutations
 
     _check_data_dir(data_dir, assert_smoothed=True)
     if threads != -1:
@@ -175,8 +289,11 @@ def diff(data_dir, output1, output2, bandwidth, stepsize, threshold, threads=-1)
         reverse=True,
     )
 
-    # the variance threshold will be determined based on the largest chromosome.
+    # the t-statistic threshold will be determined based on the largest chromosome.
     # by default, we take the 98th percentile of all window variances.
+    threshold_values = []
+    output_final = []
+
     for mat_path in chrom_paths:
         chrom = os.path.basename(os.path.splitext(mat_path)[0])
         mat = _load_chrom_mat(data_dir, chrom)
@@ -188,14 +305,15 @@ def diff(data_dir, output1, output2, bandwidth, stepsize, threshold, threads=-1)
             echo(f"Scanning chromosome {chrom} using {n_threads} parallel threads ...")
         else:
             echo(f"Scanning chromosome {chrom} ...")
-        # slide windows along the chromosome and calculate the variance of
+
+        # slide windows along the chromosome and calculate the t-statistic of
         # mean shrunken residuals for each window.
-        start = cpg_pos_chrom[0] + half_bw + 1
-        end = cpg_pos_chrom[-1] - half_bw - 1
-        genomic_positions, window_tstat = _move_windows(
-            chrom,  # delete later
-            start,
-            end,
+        output_real = calc_tstat_peaks(
+            threshold,
+            chrom,
+            "real",
+            cells,
+            cpg_pos_chrom,
             stepsize,
             half_bw,
             mat.data,
@@ -205,75 +323,79 @@ def diff(data_dir, output1, output2, bandwidth, stepsize, threshold, threads=-1)
             n_cells,
             chrom_len,
             group1_index,
-            group2_index
-        )
-
-        # calculate t-statistic for group1 (low t-values) and group 2 (high t-values)
-        # to make this possible the t-stat was multiplied by -1 for group1
-        window_tstat_groups = [window_tstat * -1, window_tstat]
-        # change later!
-        groups = ['neuroblast', 'oligodendrocyte']
-        outputs = [output1, output2]
-        for tstat_windows, group, output in zip(window_tstat_groups, groups, outputs):
-            # this is the first=biggest chrom, so let's find our t-statistic threshold here
-            threshold_value = np.nanquantile(tstat_windows, 1 - threshold)
-            echo(f"Determined the variance threshold of {threshold_value}.")
-
-            # merge overlapping windows with lowest and highest t-statistic, to get bigger regions
-            # of variable size
-            peak_starts, peak_ends = _find_peaks(
-            tstat_windows, genomic_positions, threshold_value, half_bw
+            group2_index,
+            length,
+            threshold_values
             )
-
-            # for each big merged peak, re-calculate the t-statistic and
-            # write it to a file.
-
-            for ps, pe in zip(peak_starts, peak_ends):
-                mean_shrunk_resid =_calc_mean_shrunken_residuals(
-                        mat.data,
-                        mat.indices,
-                        mat.indptr,
-                        ps,
-                        pe,
-                        smoothed_cpg_vals,
-                        n_cells,
-                        chrom_len,
-                    )
-                group1 = mean_shrunk_resid[group1_index]
-                group1 = group1[~np.isnan(group1)]
-
-                group2 = mean_shrunk_resid[group2_index]
-                group2 = group2[~np.isnan(group2)]
-
-                t_stat, s_delta, df = welch_t_test(group1, group2)
-
-                bed_entry = f"{chrom}\t{ps}\t{pe}\t{t_stat}\n"
-                output.write(bed_entry)
-
-            if len(peak_starts) > 0:
-                secho(
-                    f"Found {len(peak_starts)} differential regions on chromosome {chrom} for {group}.",
-                    fg="green",
-                )
+        # do the same for the permutations
+        # generate a list including values for all perumations
+        output_perm = []
+        for index_g1, index_g2 in zip(perm_indices_g1, perm_indices_g2):
+            output = calc_tstat_peaks(
+                threshold,
+                chrom,
+                "permuted",
+                cells,
+                cpg_pos_chrom,
+                stepsize,
+                half_bw,
+                mat.data,
+                mat.indices,
+                mat.indptr,
+                smoothed_cpg_vals,
+                n_cells,
+                chrom_len,
+                index_g1,
+                index_g2,
+                length,
+                threshold_values
+            )
+            if len(output_perm) == 0:
+                output_perm = output
             else:
-                secho(
-                    f"Found no differential regions on chromosome {chrom} for {group}.",
-                    fg="red",
-                )
+                for i in range(len(output_perm)):
+                    output_perm[i] = np.append(output_perm[i], output[i])
+
+        # join real and permuted outputs for one chromosome
+        output_chrom = []
+        for i in range(len(output_real)):
+            output_chrom.append(np.append(output_real[i], output_perm[i]))
+
+        # join ouput of individual chromosomes
+        if len(output_final) == 0:
+            output_final = output_chrom
+        else:
+            for i in range(len(output_perm)):
+                output_final[i] = np.append(output_final[i], output_chrom[i])
+                
+    # sort descending for absolute t-values
+    idx = np.argsort(np.absolute(output_final[3])*-1)
+    for coloumn in range(len(output_final)):
+        output_final[coloumn] = output_final[coloumn][idx]
+
+    # calculate FDR / adjusted p-values
+    adj_p_val = calc_fdr_jit(output_final[4] == "real")
+    output_final.append(adj_p_val)
+
+    # remove permuted values and datatype array
+    filter_datatype = output_final[4] == "real"
+    for coloumn in range(len(output_final)):
+        output_final[coloumn] = output_final[coloumn][filter_datatype]
+    del output_final[4]
+
+    # generate list of arrays according to selected celltypes and remove array with celltypes
+    # save both outputs
+    outputs = [output1, output2]
+    for cell, output in zip(cells, outputs):
+        output_cell = []
+        filter_cells = output_final[4] == cell
+        for coloumn in range(len(output_final)):
+            output_cell.append(output_final[coloumn][filter_cells])
+        del output_cell[4]
+
+        differential = np.count_nonzero(output_cell[4] < 0.05)
+        echo(f"found {differential} differentially methylated regions for {cell}.")
+
+        np.savetxt(output, np.transpose(output_cell), delimiter = "\t", fmt = '%s')
+
     return
-
-
-# currently not needed but could be useful:
-# @njit
-# def _count_n_cells(region_indices):
-#     """
-#     Count the total number of CpGs in a region, based on CSR matrix indices.
-#     Only CpGs that have coverage in at least 1 cell are counted.
-#     """
-#     seen_cells = set()
-#     n_cells = 0
-#     for cell_idx in region_indices:
-#         if cell_idx not in seen_cells:
-#             seen_cells.add(cell_idx)
-#             n_cells += 1
-#     return n_cells
