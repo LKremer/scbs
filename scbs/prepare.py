@@ -238,17 +238,17 @@ def create_custom_format(format_string):
     info = format_string[3][-1]
     if info == "c":
         coverage = True
-    elif info == "m":
+    elif info == "u":
         coverage = False
     else:
         raise Exception(
             "The 4th column of a custom input format must contain an integer and "
-            "either 'c' for coverage or 'm' for methylation (e.g. '4c'), but you "
-            f"provided '{format_string[3]}'."
+            "either 'c' for coverage or 'u' for unmethylated counts (e.g. '4c'), "
+            f"but you provided '{format_string[3]}'."
         )
     umeth = int(format_string[3][0:-1]) - 1
     sep = str(format_string[4])
-    if sep == "\\t":
+    if sep in ("\\t", "TAB", "tab", "T", "t"):
         sep = "\t"
     header = bool(int(format_string[5]))
     return CoverageFormat(chrom, pos, meth, umeth, coverage, sep, header)
