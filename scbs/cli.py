@@ -303,7 +303,9 @@ def smooth_cli(**kwargs):
     type=click.Path(exists=True, dir_okay=True, file_okay=False, readable=True),
 )
 @click.argument("output1", type=click.File("w"))
+
 @click.argument("output2", type=click.File("w"))
+
 @click.option(
     "-bw",
     "--bandwidth",
@@ -331,6 +333,15 @@ def smooth_cli(**kwargs):
     "most variable genomic bins will be reported. Overlapping variable bins "
     "are merged.",
 )
+
+@click.option(
+    "--min_cells",
+    default=6,
+    type=click.IntRange(min=1, max=10),
+    metavar="INTEGER",
+    show_default=True
+)
+
 @click.option(
     "--threads",
     default=-1,

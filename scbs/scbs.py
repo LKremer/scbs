@@ -28,24 +28,25 @@ def _output_file_handle(raw_path):
         handle = open(raw_path + ".csv", "w")
     return handle
 
-def permuted_indices(number, celltypes, cells):
-    indices_g1 = []
-    indices_g2 = []
-    for permutation in range(number):
-        permutation = np.random.permutation(celltypes)
+def permuted_indices(number, celltypes, cells, idxnan):
+    indices_g1 = np.empty([number+1, len(celltypes)], dtype = bool)
+    indices_g2 = np.empty([number+1, len(celltypes)], dtype = bool)
+    for i in range(number):
+        permutation = np.random.permutation(celltypes[(celltypes == cells[0]) | (celltypes == cells[1])])
+        for j in idxnan:
+            permutation = np.insert(permutation, j, np.nan)
         for cell in range(len(cells)):
             index = (permutation == cells[cell]).flatten()
             if cell == 0:
-                indices_g1.append(index)
+                indices_g1[i+1] = index
             else:
-                indices_g2.append(index)
+                indices_g2[i+1] = index
     return indices_g1, indices_g2
 
 @njit
 def calc_fdr_jit(datatype):
     fdisc = 0
     tdisc = 0
-    count = 0
     adj_p_val_arr = np.empty(datatype.shape, dtype=np.float64)
 
     for i in range(len(datatype)):
@@ -92,12 +93,12 @@ def _find_peaks(smoothed_vars, swindow_centers, var_cutoff, half_bw):
     return peak_starts, peak_ends
 
 @njit(nogil=True)
-def welch_t_test(group1, group2, length):
+def welch_t_test(group1, group2, min_cells):
     len_g1 = len(group1)
-    if len_g1 < length:
+    if len_g1 < min_cells:
         return np.nan, np.nan, np.nan
     len_g2 = len(group2)
-    if len_g2 < length:
+    if len_g2 < min_cells:
         return np.nan, np.nan, np.nan
 
     mean_g1 = np.mean(group1)
@@ -143,7 +144,7 @@ def _move_windows(
     chrom_len,
     group1_index,
     group2_index,
-    length
+    min_cells
 ):
     """
     Move the sliding window along the whole chromosome.
@@ -173,7 +174,7 @@ def _move_windows(
         group2 = mean_shrunk_resid[group2_index]
         group2 = group2[~np.isnan(group2)]
 
-        t, s_delta, df = welch_t_test(group1, group2, length)
+        t, s_delta, df = welch_t_test(group1, group2, min_cells)
 
         t_array[i] = t
 
@@ -195,8 +196,9 @@ def calc_tstat_peaks(
         chrom_len,
         group1_index,
         group2_index,
-        length,
-        threshold_values
+        min_cells,
+        threshold_values,
+        iteration
 ):
     output = []
     for i in range(6):
@@ -218,20 +220,23 @@ def calc_tstat_peaks(
         chrom_len,
         group1_index,
         group2_index,
-        length
+        min_cells
     )
 
     window_tstat_groups = [window_tstat * -1, window_tstat]
     # calculate t-statistic for group1 (low t-values) and group 2 (high t-values)
     # to make this possible the t-stat was multiplied by -1 for group1
-    for tstat_windows, cell in zip(window_tstat_groups, cells):
-        if len(threshold_values) < 2:
-        # this is the first=biggest chrom, so let's find our t-statistic threshold here
+    thresholds = []
+    # this is the first=biggest chrom, so let's find our t-statistic threshold here
+    if len(threshold_values) <= iteration:
+        for tstat_windows, cell in zip(window_tstat_groups, cells):
             threshold_value = np.nanquantile(tstat_windows, 1 - threshold)
             echo(f"Determined the variance threshold of {threshold_value} for {cell}.")
-            threshold_values.append(threshold_value)
+            thresholds.append(threshold_value)
+        threshold_values.append(np.asarray(thresholds))
+        print(len(threshold_values))
 
-    for tstat_windows, cell, threshold_value in zip(window_tstat_groups, cells, threshold_values):
+    for tstat_windows, cell, threshold_value in zip(window_tstat_groups, cells, threshold_values[iteration]):
         # merge overlapping windows with lowest and highest t-statistic, to get bigger regions
         # of variable size
         peak_starts, peak_ends = _find_peaks(
@@ -256,26 +261,36 @@ def calc_tstat_peaks(
             group2 = mean_shrunk_resid[group2_index]
             group2 = group2[~np.isnan(group2)]
 
-            t_stat, s_delta, df = welch_t_test(group1, group2, length)
+            t_stat, s_delta, df = welch_t_test(group1, group2, min_cells)
 
             datapoints = [chrom, ps, pe, t_stat, datatype, cell]
 
             for datapoint in range(len(datapoints)):
                 output[datapoint] = np.append(output[datapoint], datapoints[datapoint])
 
-    return output
+    return output, threshold_values
 
-def diff(data_dir, output1, output2, bandwidth, stepsize, threshold, length = 3, threads=-1):
+def diff(data_dir, output1, output2, bandwidth, stepsize, threshold, min_cells, threads=-1):
     #exclude the following later on. uses pandas and it needs to be possible to chose groups
-    celltypes = pd.read_csv(os.path.join(data_dir, "celltypes.txt"), header=None).to_numpy()
-    cells = ['neuroblast', 'oligodendrocyte']
-    # maybe for loop to calc indices and permutations
-    group1_index = (celltypes == cells[0]).flatten()
-    group2_index = (celltypes == cells[1]).flatten()
+    celltypes = pd.read_csv(os.path.join(data_dir, "filtered_celltypes.txt"), header=None).to_numpy().flatten()
+    cells = []
+    idxnan = []
+    # position of nan will be used for permutations to keep them constant and only permute across the groups
+    for i in range(len(celltypes)):
+        if str(celltypes.flatten()[i]) != 'nan':
+            cells.append(celltypes[i])
+        else:
+            idxnan.append(i)
+
+    # which categeorical celltypes are present in the input file (defines the two groups)
+    cells = np.unique(cells)
 
     # get indices for both groups from five permutations
-    number = 5 #number of permutations, change later. either fixed or argument in diff
-    perm_indices_g1, perm_indices_g2 = permuted_indices(number, celltypes, cells) #change number of permutations
+    number = 5 # number of permutations, change later. either fixed or argument in diff
+    indices_g1, indices_g2 = permuted_indices(number, celltypes, cells, idxnan) #change number of permutations
+    # first array will be index of real data
+    indices_g1[0] = (celltypes == cells[0]).flatten()
+    indices_g1[0] = (celltypes == cells[1]).flatten()
 
     _check_data_dir(data_dir, assert_smoothed=True)
     if threads != -1:
@@ -308,33 +323,20 @@ def diff(data_dir, output1, output2, bandwidth, stepsize, threshold, length = 3,
 
         # slide windows along the chromosome and calculate the t-statistic of
         # mean shrunken residuals for each window.
-        output_real = calc_tstat_peaks(
-            threshold,
-            chrom,
-            "real",
-            cells,
-            cpg_pos_chrom,
-            stepsize,
-            half_bw,
-            mat.data,
-            mat.indices,
-            mat.indptr,
-            smoothed_cpg_vals,
-            n_cells,
-            chrom_len,
-            group1_index,
-            group2_index,
-            length,
-            threshold_values
-            )
+
         # do the same for the permutations
         # generate a list including values for all perumations
-        output_perm = []
-        for index_g1, index_g2 in zip(perm_indices_g1, perm_indices_g2):
-            output = calc_tstat_peaks(
+        output_chrom = []
+        for iteration in range(len(indices_g1)):
+            if iteration == 0:
+                datatype = "real"
+            else:
+                datatype = "permuted"
+
+            output, threshold_values = calc_tstat_peaks(
                 threshold,
                 chrom,
-                "permuted",
+                datatype,
                 cells,
                 cpg_pos_chrom,
                 stepsize,
@@ -345,56 +347,58 @@ def diff(data_dir, output1, output2, bandwidth, stepsize, threshold, length = 3,
                 smoothed_cpg_vals,
                 n_cells,
                 chrom_len,
-                index_g1,
-                index_g2,
-                length,
-                threshold_values
-            )
-            if len(output_perm) == 0:
-                output_perm = output
+                indices_g1[iteration],
+                indices_g2[iteration],
+                min_cells,
+                threshold_values,
+                iteration
+                )
+            print(threshold_values)
+
+            # join outputs of all loops
+            if len(output_chrom) == 0:
+                output_chrom = output
             else:
-                for i in range(len(output_perm)):
-                    output_perm[i] = np.append(output_perm[i], output[i])
+                for i in range(len(output_chrom)):
+                    output_chrom[i] = np.append(output_chrom[i], output[i])
 
-        # join real and permuted outputs for one chromosome
-        output_chrom = []
-        for i in range(len(output_real)):
-            output_chrom.append(np.append(output_real[i], output_perm[i]))
-
-        # join ouput of individual chromosomes
+        # join outputs of individual chromosomes
         if len(output_final) == 0:
             output_final = output_chrom
         else:
-            for i in range(len(output_perm)):
-                output_final[i] = np.append(output_final[i], output_chrom[i])
+            for column in range(len(output_final)):
+                output_final[column] = np.append(output_final[column], output_chrom[column])
                 
     # sort descending for absolute t-values
     idx = np.argsort(np.absolute(output_final[3])*-1)
-    for coloumn in range(len(output_final)):
-        output_final[coloumn] = output_final[coloumn][idx]
+    for column in range(len(output_final)):
+        output_final[column] = output_final[column][idx]
 
     # calculate FDR / adjusted p-values
     adj_p_val = calc_fdr_jit(output_final[4] == "real")
     output_final.append(adj_p_val)
 
+    '''
     # remove permuted values and datatype array
     filter_datatype = output_final[4] == "real"
-    for coloumn in range(len(output_final)):
-        output_final[coloumn] = output_final[coloumn][filter_datatype]
+    for column in range(len(output_final)):
+        output_final[column] = output_final[column][filter_datatype]
     del output_final[4]
+    '''
 
     # generate list of arrays according to selected celltypes and remove array with celltypes
     # save both outputs
+    # if datatype array is removed again change index from 5 to 4
     outputs = [output1, output2]
     for cell, output in zip(cells, outputs):
         output_cell = []
-        filter_cells = output_final[4] == cell
-        for coloumn in range(len(output_final)):
-            output_cell.append(output_final[coloumn][filter_cells])
-        del output_cell[4]
+        filter_cells = output_final[5] == cell
+        for column in range(len(output_final)):
+            output_cell.append(output_final[column][filter_cells])
+        del output_cell[5]
 
-        differential = np.count_nonzero(output_cell[4] < 0.05)
-        echo(f"found {differential} differentially methylated regions for {cell}.")
+        differential = np.count_nonzero(output_cell[5] < 0.05)
+        echo(f"found {differential} significant differentially methylated regions for {cell}.")
 
         np.savetxt(output, np.transpose(output_cell), delimiter = "\t", fmt = '%s')
 
