@@ -279,19 +279,16 @@ def smooth_cli(**kwargs):
     smooth(**kwargs)
     timer.stop()
 
-
-# diff command
+# scan command
 @cli.command(
-    name="diff",
+    name="scan",
     help=f"""
     Scans the whole genome for regions of variable methylation. This works by sliding
     a window across the genome, calculating the variance of methylation per window,
     and selecting windows above a variance threshold.
-
     {style("DATA_DIR", fg="green")} is the directory containing the methylation
     matrices produced by running 'scbs prepare', as well as the smoothed methylation
     values produced by running 'scbs smooth'.
-
     {style("OUTPUT", fg="green")} is the path of the output file in '.bed' format,
     containing the variable windows that were found.
     """,
@@ -302,10 +299,7 @@ def smooth_cli(**kwargs):
     "data-dir",
     type=click.Path(exists=True, dir_okay=True, file_okay=False, readable=True),
 )
-@click.argument("output1", type=click.File("w"))
-
-@click.argument("output2", type=click.File("w"))
-
+@click.argument("output", type=click.File("w"))
 @click.option(
     "-bw",
     "--bandwidth",
@@ -324,13 +318,84 @@ def smooth_cli(**kwargs):
     help="Step size of the variance windows in basepairs.",
 )
 @click.option(
-    "--threshold",
+    "--var-threshold",
     default=0.02,
     show_default=True,
     type=click.FloatRange(min=0, max=1),
     metavar="FLOAT",
     help="The variance threshold, i.e. 0.02 means that the top 2% "
     "most variable genomic bins will be reported. Overlapping variable bins "
+    "are merged.",
+)
+@click.option(
+    "--threads",
+    default=-1,
+    help="How many CPU threads to use in parallel.  [default: all available]",
+    callback=_set_n_threads,
+)
+def scan_cli(**kwargs):
+    from .scbs import scan
+
+    timer = Timer(label="scan")
+    _print_kwargs(kwargs)
+    scan(**kwargs)
+    timer.stop()
+
+
+# diff command
+@cli.command(
+    name="diff",
+    help=f"""
+    Scans the whole genome for regions of differential methylation between two celltypes. 
+    This works by sliding a window across the genome, calculating the t-statistic of methylation per window,
+    and selecting windows above a t-statistic threshold.
+
+    {style("DATA_DIR", fg="green")} is the directory containing the methylation
+    matrices produced by running 'scbs prepare', as well as the smoothed methylation
+    values produced by running 'scbs smooth'.
+
+    {style("OUTPUT", fg="green")} is the path of the output file in '.bed' format,
+    containing the differentially methylated regions that were found.
+    """,
+    short_help="Scan the genome to discover regions with differential methylation",
+    no_args_is_help=True,
+)
+@click.argument(
+    "data-dir",
+    type=click.Path(exists=True, dir_okay=True, file_okay=False, readable=True),
+)
+
+@click.argument("cell_file", type=click.File("r"))
+
+@click.argument("output1", type=click.File("w"))
+
+@click.argument("output2", type=click.File("w"))
+
+@click.option(
+    "-bw",
+    "--bandwidth",
+    default=2000,
+    type=click.IntRange(min=1, max=1e6),
+    metavar="INTEGER",
+    show_default=True,
+    help="Bandwidth of the windows in basepairs.",
+)
+@click.option(
+    "--stepsize",
+    default=10,
+    type=click.IntRange(min=1, max=1e6),
+    metavar="INTEGER",
+    show_default=True,
+    help="Step size of the windows in basepairs.",
+)
+@click.option(
+    "--threshold",
+    default=0.02,
+    show_default=True,
+    type=click.FloatRange(min=0, max=1),
+    metavar="FLOAT",
+    help="The t-statistic threshold, i.e. 0.02 means that the top 2% "
+    "most extreme genomic bins will be reported. Overlapping bins "
     "are merged.",
 )
 
@@ -349,7 +414,7 @@ def smooth_cli(**kwargs):
     callback=_set_n_threads,
 )
 def diff_cli(**kwargs):
-    from .scbs import diff
+    from .diff import diff
 
     timer = Timer(label="diff")
     _print_kwargs(kwargs)
