@@ -34,15 +34,6 @@ Also make sure to read the help by typing `scbs --help`.
 If you encounter a "too many open files" error during `scbs prepare` (`OSError: [Errno 24] Too many open files`), you need to increase the maximum number of files that can be opened. In Unix systems, try `ulimit -n 9999`.  
 If you encounter problems during installation, make sure you have Python3.8 or higher. If the problem persists, consider installing scbs in a clean Python environment (for example using [venv](https://docs.python.org/3/library/venv.html)).
 
-## TODO (in order of importance):
-- [x] finish implementing "scbs scan" (overlapping variable windows are now merged automatically, the variance threshold is now estimated from the data itself by taking the top x% (default 2%) most variable genomic windows)
-- [x] allow other input formats (now we support bismark, allc=methylpy and custom user-specified formats)
-- [x] make things fast with numba (at least scan and matrix are now fast, I/O and gzip is now a bottleneck)
-- [x] test on other datasets
-- [x] write basic tests & docs
-- [ ] add further functionality (e.g. SVD, plotting, clustering, testing for differential methylation between clusters, usage without CLI...)
-- [ ] "count" matrix: allow user to choose between long and wide matrix format 
-- [ ] output "count" matrices as an [AnnData](https://anndata.readthedocs.io/en/latest/) object, so we can interface with scanpy, episcanpy, muon...
 
 ## Contributors
 - [Lukas PM Kremer](https://github.com/LKremer)
