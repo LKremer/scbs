@@ -30,7 +30,7 @@ Also make sure to read the help by typing `scbs --help` or by checking [this pag
 ## What can this package do?
 
 `scbs` takes as input a number of single-cell methylation files and allows you to quickly and easily obtain a cell × region matrix for downstream analysis.
-It also facilitates quality control, allows you to discover variably-methylated regions (VMRs), accurately quantifies methylation in genomic intervals, and stores your sc-methylomes in an efficient manner.
+It also facilitates quality control, allows you to discover variably methylated regions (VMRs), accurately quantifies methylation in genomic intervals, and stores your sc-methylomes in an efficient manner.
 
 ![schematic showing the capabilities of scbs](docs/Fig_workflow.png)
 
