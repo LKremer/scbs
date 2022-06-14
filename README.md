@@ -24,7 +24,7 @@ scbs --version
 ## [Tutorial](docs/tutorial.md) of a typical `scbs` run
 A tutorial can be found [here](docs/tutorial.md).
 
-Also make sure to read the help by typing `scbs --help`.
+Also make sure to read the help by typing `scbs --help` or by checking [this page](docs/commands.md).
 
 
 ## What can this package do?
