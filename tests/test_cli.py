@@ -105,6 +105,15 @@ def test_filter_cli_threshold(tmp_path):
         assert csv.readline().startswith("b,")
 
 
+def test_filter_cli_toostrict(tmp_path):
+    p = os.path.join(tmp_path, "filtered_data_dir")
+    runner = CliRunner()
+    result = runner.invoke(
+        cli, ["filter", "--min-meth", "100", "tests/data/tiny/data_dir/", p]
+    )
+    assert result.exit_code == 1, result.output
+
+
 def test_filter_cli_keep(tmp_path):
     p = os.path.join(tmp_path, "filtered_data_dir")
     keep_txt = os.path.join(tmp_path, "cells_to_keep.txt")

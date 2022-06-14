@@ -1,7 +1,7 @@
 [tool.poetry]
 name = "scbs"
-version = "0.3.3"
-description = "command line utility to work with single cell methylation data"
+version = "0.3.4"
+description = "command line tool for the analysis of single-cell bisulfite-sequencing data"
 authors = [
     "Lukas PM Kremer <L-Kremer@web.de>",
     "Leonie Küchenhoff <leonie.kuechenhoff@gmx.de>",
