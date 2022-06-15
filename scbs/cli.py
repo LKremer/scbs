@@ -283,18 +283,18 @@ def smooth_cli(**kwargs):
 @cli.command(
     name="scan",
     help=f"""
-    Scans the whole genome for regions of variable methylation. This works by sliding
-    a window across the genome, calculating the variance of methylation per window,
-    and selecting windows above a variance threshold.
+    Scans the whole genome for variably methylated regions (VMRs). This works by 
+    sliding a window across the genome, calculating the variance of methylation per 
+    window, and selecting windows above a variance threshold.
 
     {style("DATA_DIR", fg="green")} is the directory containing the methylation
     matrices produced by running 'scbs prepare', as well as the smoothed methylation
     values produced by running 'scbs smooth'.
 
     {style("OUTPUT", fg="green")} is the path of the output file in '.bed' format,
-    containing the variable windows that were found.
+    containing the VMRs that were found.
     """,
-    short_help="Scan the genome to discover regions with variable methylation",
+    short_help="Scan the genome to discover variably methylated regions",
     no_args_is_help=True,
 )
 @click.argument(
@@ -309,7 +309,8 @@ def smooth_cli(**kwargs):
     type=click.IntRange(min=1, max=1e6),
     metavar="INTEGER",
     show_default=True,
-    help="Bandwidth of the variance windows in basepairs.",
+    help="Bandwidth of the variance windows in basepairs. Increase this ",
+    "value to find larger VMRs."
 )
 @click.option(
     "--stepsize",
@@ -317,7 +318,8 @@ def smooth_cli(**kwargs):
     type=click.IntRange(min=1, max=1e6),
     metavar="INTEGER",
     show_default=True,
-    help="Step size of the variance windows in basepairs.",
+    help="Step size of the variance windows in basepairs. Increase "
+    "this value to gain speed, at the cost of some accuracy.",
 )
 @click.option(
     "--var-threshold",
