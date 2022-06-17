@@ -37,6 +37,15 @@ It also facilitates quality control, allows you to discover variably methylated 
 You can find a list of the available `scbs` commands [here](docs/commands.md).
 
 
+## bioRxiv preprint
+
+For a detailed explanation of the methods implemented in `scbs`, please check our bioRxiv preprint:
+
+*Analyzing single-cell bisulfite sequencing data with scbs*  
+Lukas PM Kremer, Leonie Kuechenhoff, Santiago Cerrizuela, Ana Martin-Villalba, Simon Anders  
+bioRxiv 2022.06.15.496318; doi: [https://doi.org/10.1101/2022.06.15.496318](https://doi.org/10.1101/2022.06.15.496318)
+
+
 
 ## Troubleshooting
 
