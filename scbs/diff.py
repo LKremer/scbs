@@ -44,7 +44,7 @@ def permuted_indices(number, celltypes, cells, idxnan):
     return indices_g1, indices_g2
 
 @njit
-def calc_fdr_jit(datatype):
+def calc_fdr(datatype):
     fdisc = 0
     tdisc = 0
     adj_p_val_arr = np.empty(datatype.shape, dtype=np.float64)
@@ -269,7 +269,7 @@ def calc_tstat_peaks(
 
     return output, threshold_values
 
-def diff(data_dir, cell_file, output1, output2, bandwidth, stepsize, threshold, min_cells, threads=-1):
+def diff(data_dir, cell_file, output, bandwidth, stepsize, threshold, min_cells, threads=-1):
     #exclude the following later on. uses pandas and it needs to be possible to chose groups
     celltypes = pd.read_csv(cell_file, header=None).to_numpy().flatten()
     cells = []
@@ -289,7 +289,7 @@ def diff(data_dir, cell_file, output1, output2, bandwidth, stepsize, threshold, 
     indices_g1, indices_g2 = permuted_indices(number, celltypes, cells, idxnan) #change number of permutations
     # first array will be index of real data
     indices_g1[0] = (celltypes == cells[0]).flatten()
-    indices_g1[0] = (celltypes == cells[1]).flatten()
+    indices_g2[0] = (celltypes == cells[1]).flatten()
 
     _check_data_dir(data_dir, assert_smoothed=True)
     if threads != -1:
@@ -332,7 +332,7 @@ def diff(data_dir, cell_file, output1, output2, bandwidth, stepsize, threshold, 
             else:
                 datatype = "permuted"
 
-            output, threshold_values = calc_tstat_peaks(
+            output_iteration, threshold_values = calc_tstat_peaks(
                 threshold,
                 chrom,
                 datatype,
@@ -355,10 +355,10 @@ def diff(data_dir, cell_file, output1, output2, bandwidth, stepsize, threshold, 
 
             # join outputs of all loops
             if len(output_chrom) == 0:
-                output_chrom = output
+                output_chrom = output_iteration
             else:
                 for i in range(len(output_chrom)):
-                    output_chrom[i] = np.append(output_chrom[i], output[i])
+                    output_chrom[i] = np.append(output_chrom[i], output_iteration[i])
 
         # join outputs of individual chromosomes
         if len(output_final) == 0:
@@ -373,17 +373,21 @@ def diff(data_dir, cell_file, output1, output2, bandwidth, stepsize, threshold, 
         output_final[column] = output_final[column][idx]
 
     # calculate FDR / adjusted p-values
-    adj_p_val = calc_fdr_jit(output_final[4] == "real")
+    adj_p_val = calc_fdr(output_final[4] == "real")
     output_final.append(adj_p_val)
 
+    np.savetxt(output, np.transpose(output_final), delimiter="\t", fmt='%s')
+
     '''
+    # reinclude at the end
     # remove permuted values and datatype array
     filter_datatype = output_final[4] == "real"
     for column in range(len(output_final)):
         output_final[column] = output_final[column][filter_datatype]
     del output_final[4]
-    '''
+    
 
+    # only important if there is two output files
     # generate list of arrays according to selected celltypes and remove array with celltypes
     # save both outputs
     # if datatype array is removed again change index from 5 to 4
@@ -399,5 +403,6 @@ def diff(data_dir, cell_file, output1, output2, bandwidth, stepsize, threshold, 
         echo(f"found {differential} significant differentially methylated regions for {cell}.")
 
         np.savetxt(output, np.transpose(output_cell), delimiter = "\t", fmt = '%s')
+    '''
 
     return

@@ -355,9 +355,9 @@ def scan_cli(**kwargs):
     values produced by running 'scbs smooth'.
 
     {style("OUTPUT", fg="green")} is the path of the output file in '.bed' format,
-    containing the differentially methylated regions that were found.
+    containing the differentially methylated regions, t-statistic, adjusted p-value that were found.
     """,
-    short_help="Scan the genome to discover regions with differential methylation",
+    short_help="Scan the genome to discover regions with differential methylation between celltypes",
     no_args_is_help=True,
 )
 @click.argument(
@@ -367,9 +367,7 @@ def scan_cli(**kwargs):
 
 @click.argument("cell_file", type=click.File("r"))
 
-@click.argument("output1", type=click.File("w"))
-
-@click.argument("output2", type=click.File("w"))
+@click.argument("output", type=click.File("w"))
 
 @click.option(
     "-bw",
