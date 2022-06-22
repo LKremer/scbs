@@ -8,7 +8,6 @@ import numpy as np
 from numba import njit, prange
 import pandas as pd
 import math
-import random
 
 from .numerics import _calc_mean_shrunken_residuals
 from .smooth import _load_smoothed_chrom
@@ -28,20 +27,20 @@ def _output_file_handle(raw_path):
         handle = open(raw_path + ".csv", "w")
     return handle
 
-def permuted_indices(number, celltypes, cells, idxnan):
-    indices_g1 = np.empty([number+1, len(celltypes)], dtype = bool)
-    indices_g2 = np.empty([number+1, len(celltypes)], dtype = bool)
-    for i in range(number):
-        permutation = np.random.permutation(celltypes[(celltypes == cells[0]) | (celltypes == cells[1])])
-        for j in idxnan:
-            permutation = np.insert(permutation, j, np.nan)
-        for cell in range(len(cells)):
-            index = (permutation == cells[cell]).flatten()
-            if cell == 0:
-                indices_g1[i+1] = index
-            else:
-                indices_g2[i+1] = index
-    return indices_g1, indices_g2
+
+@njit
+def permuted_indices(idx_celltypes, celltype_1, celltype_2, total_cells):
+    permutation = np.random.permutation(idx_celltypes)
+
+    index_g1 = np.zeros(total_cells, dtype=numba.boolean)
+    index_g2 = np.zeros(total_cells, dtype=numba.boolean)
+
+    for i in permutation[celltype_1]:
+        index_g1[i] = True
+    for i in permutation[celltype_2]:
+        index_g2[i] = True
+
+    return index_g1, index_g2
 
 @njit
 def calc_fdr(datatype):
@@ -144,17 +143,24 @@ def _move_windows(
     chrom_len,
     group1_index,
     group2_index,
-    min_cells
+    min_cells,
+    datatype,
+    idx_celltypes,
+    celltype_1,
+    celltype_2,
+    total_cells
 ):
     """
     Move the sliding window along the whole chromosome.
     For each window, calculate the mean shrunken residuals,
     i.e. 1 methylation value per cell for that window. Then
-    calculate the variance of shrunken residuals. This is our
-    measure of methylation variability for that window.
+    calculate the t-statistic of shrunken residuals. This is our
+    measure of differential methylation for that window.
     """
     windows = np.arange(start, end, stepsize)
     t_array = np.empty(windows.shape, dtype=np.float64)
+    scanned_region = 0
+
     for i in prange(windows.shape[0]):
         pos = windows[i]
         mean_shrunk_resid = _calc_mean_shrunken_residuals(
@@ -165,8 +171,9 @@ def _move_windows(
             pos + half_bw,
             smoothed_vals,
             n_cells,
-            chrom_len,
+            chrom_len
         )
+        scanned_region += stepsize
 
         group1 = mean_shrunk_resid[group1_index]
         group1 = group1[~np.isnan(group1)]
@@ -174,8 +181,12 @@ def _move_windows(
         group2 = mean_shrunk_resid[group2_index]
         group2 = group2[~np.isnan(group2)]
 
-        t, s_delta, df = welch_t_test(group1, group2, min_cells)
+        # re-permute indices after 2Mbp
+        if datatype == "permuted" and scanned_region >= 2000000:
+            group1_index, group2_index = permuted_indices(idx_celltypes, celltype_1, celltype_2, total_cells)
+            scanned_region = 0
 
+        t, s_delta, df = welch_t_test(group1, group2, min_cells)
         t_array[i] = t
 
     return windows, t_array
@@ -198,7 +209,11 @@ def calc_tstat_peaks(
         group2_index,
         min_cells,
         threshold_values,
-        iteration
+        iteration,
+        idx_celltypes,
+        celltype_1,
+        celltype_2,
+        total_cells
 ):
     output = []
     for i in range(6):
@@ -220,7 +235,12 @@ def calc_tstat_peaks(
         chrom_len,
         group1_index,
         group2_index,
-        min_cells
+        min_cells,
+        datatype,
+        idx_celltypes,
+        celltype_1,
+        celltype_2,
+        total_cells
     )
 
     window_tstat_groups = [window_tstat * -1, window_tstat]
@@ -231,7 +251,7 @@ def calc_tstat_peaks(
     if len(threshold_values) <= iteration:
         for tstat_windows, cell in zip(window_tstat_groups, cells):
             threshold_value = np.nanquantile(tstat_windows, 1 - threshold)
-            echo(f"Determined the variance threshold of {threshold_value} for {cell}.")
+            echo(f"Determined the variance threshold of {threshold_value} for {cell} of {datatype} data.")
             thresholds.append(threshold_value)
         threshold_values.append(np.asarray(thresholds))
         
@@ -273,23 +293,29 @@ def diff(data_dir, cell_file, output, bandwidth, stepsize, threshold, min_cells,
     #exclude the following later on. uses pandas and it needs to be possible to chose groups
     celltypes = pd.read_csv(cell_file, header=None).to_numpy().flatten()
     cells = []
-    idxnan = []
+    #idxnan = [] #if numba error try List()
     # position of nan will be used for permutations to keep them constant and only permute across the groups
     for i in range(len(celltypes)):
-        if str(celltypes.flatten()[i]) != 'nan':
+        if str(celltypes[i]) != 'nan':
             cells.append(celltypes[i])
-        else:
-            idxnan.append(i)
+        #else:
+            #idxnan.append(i)
 
     # which categeorical celltypes are present in the input file (defines the two groups)
     cells = np.unique(cells)
 
-    # get indices for both groups from five permutations
-    number = 5 # number of permutations, change later. either fixed or argument in diff
-    indices_g1, indices_g2 = permuted_indices(number, celltypes, cells, idxnan) #change number of permutations
+    indices_g1 = np.empty([2, len(celltypes)], dtype=bool)
+    indices_g2 = np.empty([2, len(celltypes)], dtype=bool)
+
     # first array will be index of real data
     indices_g1[0] = (celltypes == cells[0]).flatten()
     indices_g2[0] = (celltypes == cells[1]).flatten()
+
+    # needs to be calculate for the permutation
+    idx_celltypes = np.asarray(np.where((celltypes == cells[0]) | (celltypes == cells[1]))).flatten()
+    celltype_1 = (celltypes[(celltypes == cells[0]) | (celltypes == cells[1])] == cells[0])
+    celltype_2 = (celltypes[(celltypes == cells[0]) | (celltypes == cells[1])] == cells[1])
+    total_cells = len(celltypes)
 
     _check_data_dir(data_dir, assert_smoothed=True)
     if threads != -1:
@@ -320,11 +346,14 @@ def diff(data_dir, cell_file, output, bandwidth, stepsize, threshold, min_cells,
         else:
             echo(f"Scanning chromosome {chrom} ...")
 
+        # calculate permutation
+        indices_g1[1], indices_g2[1] = permuted_indices(idx_celltypes, celltype_1, celltype_2, total_cells)
+
         # slide windows along the chromosome and calculate the t-statistic of
         # mean shrunken residuals for each window.
-
         # do the same for the permutations
         # generate a list including values for all perumations
+
         output_chrom = []
         for iteration in range(len(indices_g1)):
             if iteration == 0:
@@ -350,7 +379,11 @@ def diff(data_dir, cell_file, output, bandwidth, stepsize, threshold, min_cells,
                 indices_g2[iteration],
                 min_cells,
                 threshold_values,
-                iteration
+                iteration,
+                idx_celltypes,
+                celltype_1,
+                celltype_2,
+                total_cells
                 )
 
             # join outputs of all loops
