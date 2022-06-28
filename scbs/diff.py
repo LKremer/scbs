@@ -1,13 +1,12 @@
-
 import gzip
+import math
 import os
 from glob import glob
 
 import numba
 import numpy as np
-from numba import njit, prange
 import pandas as pd
-import math
+from numba import njit, prange
 
 from .numerics import _calc_mean_shrunken_residuals
 from .smooth import _load_smoothed_chrom
@@ -15,7 +14,7 @@ from .utils import _check_data_dir, _load_chrom_mat, echo, secho
 
 # ignore division by 0 and division by NaN error
 np.seterr(divide="ignore", invalid="ignore")
-
+np.random.seed(42)
 
 def _output_file_handle(raw_path):
     path = raw_path.lower()
@@ -42,6 +41,7 @@ def permuted_indices(idx_celltypes, celltype_1, celltype_2, total_cells):
 
     return index_g1, index_g2
 
+
 @njit
 def calc_fdr(datatype):
     fdisc = 0
@@ -59,6 +59,7 @@ def calc_fdr(datatype):
         adj_p_val_arr[i] = adj_p_val
 
     return adj_p_val_arr
+
 
 @njit
 def _find_peaks(smoothed_vars, swindow_centers, var_cutoff, half_bw):
@@ -90,6 +91,7 @@ def _find_peaks(smoothed_vars, swindow_centers, var_cutoff, half_bw):
         peak_ends.append(pos)
     assert len(peak_starts) == len(peak_ends)
     return peak_starts, peak_ends
+
 
 @njit(nogil=True)
 def welch_t_test(group1, group2, min_cells):
@@ -124,10 +126,13 @@ def welch_t_test(group1, group2, min_cells):
     t = (mean_g1 - mean_g2) / s_delta
 
     numerator = (var_g1 / len_g1 + var_g2 / len_g2) ** 2
-    denominator = ((var_g1 / len_g1) ** 2 / (len_g1 - 1)) + ((var_g2 / len_g2) ** 2 / (len_g2 - 1))
+    denominator = ((var_g1 / len_g1) ** 2 / (len_g1 - 1)) + (
+        (var_g2 / len_g2) ** 2 / (len_g2 - 1)
+    )
     df = numerator / denominator
 
     return t, s_delta, df
+
 
 @njit(parallel=True)
 def _move_windows(
@@ -148,7 +153,7 @@ def _move_windows(
     idx_celltypes,
     celltype_1,
     celltype_2,
-    total_cells
+    total_cells,
 ):
     """
     Move the sliding window along the whole chromosome.
@@ -171,19 +176,21 @@ def _move_windows(
             pos + half_bw,
             smoothed_vals,
             n_cells,
-            chrom_len
+            chrom_len,
         )
         scanned_region += stepsize
 
         group1 = mean_shrunk_resid[group1_index]
         group1 = group1[~np.isnan(group1)]
-        
+
         group2 = mean_shrunk_resid[group2_index]
         group2 = group2[~np.isnan(group2)]
 
         # re-permute indices after 2Mbp
         if datatype == "permuted" and scanned_region >= 2000000:
-            group1_index, group2_index = permuted_indices(idx_celltypes, celltype_1, celltype_2, total_cells)
+            group1_index, group2_index = permuted_indices(
+                idx_celltypes, celltype_1, celltype_2, total_cells
+            )
             scanned_region = 0
 
         t, s_delta, df = welch_t_test(group1, group2, min_cells)
@@ -191,32 +198,33 @@ def _move_windows(
 
     return windows, t_array
 
+
 def calc_tstat_peaks(
-        threshold,
-        chrom,
-        datatype,
-        cells,
-        cpg_pos_chrom,
-        stepsize,
-        half_bw,
-        data_chrom,
-        indices_chrom,
-        indptr_chrom,
-        smoothed_vals,
-        n_cells,
-        chrom_len,
-        group1_index,
-        group2_index,
-        min_cells,
-        threshold_values,
-        iteration,
-        idx_celltypes,
-        celltype_1,
-        celltype_2,
-        total_cells
+    threshold,
+    chrom,
+    datatype,
+    cells,
+    cpg_pos_chrom,
+    stepsize,
+    half_bw,
+    data_chrom,
+    indices_chrom,
+    indptr_chrom,
+    smoothed_vals,
+    n_cells,
+    chrom_len,
+    group1_index,
+    group2_index,
+    min_cells,
+    threshold_values,
+    iteration,
+    idx_celltypes,
+    celltype_1,
+    celltype_2,
+    total_cells,
 ):
     output = []
-    for i in range(6):
+    for _ in range(6):
         array = np.empty(0)
         output.append(array)
 
@@ -240,7 +248,7 @@ def calc_tstat_peaks(
         idx_celltypes,
         celltype_1,
         celltype_2,
-        total_cells
+        total_cells,
     )
 
     window_tstat_groups = [window_tstat * -1, window_tstat]
@@ -251,11 +259,15 @@ def calc_tstat_peaks(
     if len(threshold_values) <= iteration:
         for tstat_windows, cell in zip(window_tstat_groups, cells):
             threshold_value = np.nanquantile(tstat_windows, 1 - threshold)
-            echo(f"Determined the variance threshold of {threshold_value} for {cell} of {datatype} data.")
+            echo(
+                f"Determined the variance threshold of {threshold_value} for {cell} of {datatype} data."
+            )
             thresholds.append(threshold_value)
         threshold_values.append(np.asarray(thresholds))
-        
-    for tstat_windows, cell, threshold_value in zip(window_tstat_groups, cells, threshold_values[iteration]):
+
+    for tstat_windows, cell, threshold_value in zip(
+        window_tstat_groups, cells, threshold_values[iteration]
+    ):
         # merge overlapping windows with lowest and highest t-statistic, to get bigger regions
         # of variable size
         peak_starts, peak_ends = _find_peaks(
@@ -289,17 +301,20 @@ def calc_tstat_peaks(
 
     return output, threshold_values
 
-def diff(data_dir, cell_file, output, bandwidth, stepsize, threshold, min_cells, threads=-1):
-    #exclude the following later on. uses pandas and it needs to be possible to chose groups
+
+def diff(
+    data_dir, cell_file, output, bandwidth, stepsize, threshold, min_cells, threads=-1
+):
+    # exclude the following later on. uses pandas and it needs to be possible to chose groups
     celltypes = pd.read_csv(cell_file, header=None).to_numpy().flatten()
     cells = []
-    #idxnan = [] #if numba error try List()
+    # idxnan = [] #if numba error try List()
     # position of nan will be used for permutations to keep them constant and only permute across the groups
     for i in range(len(celltypes)):
-        if str(celltypes[i]) != 'nan':
+        if str(celltypes[i]) != "nan":
             cells.append(celltypes[i])
-        #else:
-            #idxnan.append(i)
+        # else:
+        # idxnan.append(i)
 
     # which categeorical celltypes are present in the input file (defines the two groups)
     cells = np.unique(cells)
@@ -312,9 +327,15 @@ def diff(data_dir, cell_file, output, bandwidth, stepsize, threshold, min_cells,
     indices_g2[0] = (celltypes == cells[1]).flatten()
 
     # needs to be calculate for the permutation
-    idx_celltypes = np.asarray(np.where((celltypes == cells[0]) | (celltypes == cells[1]))).flatten()
-    celltype_1 = (celltypes[(celltypes == cells[0]) | (celltypes == cells[1])] == cells[0])
-    celltype_2 = (celltypes[(celltypes == cells[0]) | (celltypes == cells[1])] == cells[1])
+    idx_celltypes = np.asarray(
+        np.where((celltypes == cells[0]) | (celltypes == cells[1]))
+    ).flatten()
+    celltype_1 = (
+        celltypes[(celltypes == cells[0]) | (celltypes == cells[1])] == cells[0]
+    )
+    celltype_2 = (
+        celltypes[(celltypes == cells[0]) | (celltypes == cells[1])] == cells[1]
+    )
     total_cells = len(celltypes)
 
     _check_data_dir(data_dir, assert_smoothed=True)
@@ -347,7 +368,9 @@ def diff(data_dir, cell_file, output, bandwidth, stepsize, threshold, min_cells,
             echo(f"Scanning chromosome {chrom} ...")
 
         # calculate permutation
-        indices_g1[1], indices_g2[1] = permuted_indices(idx_celltypes, celltype_1, celltype_2, total_cells)
+        indices_g1[1], indices_g2[1] = permuted_indices(
+            idx_celltypes, celltype_1, celltype_2, total_cells
+        )
 
         # slide windows along the chromosome and calculate the t-statistic of
         # mean shrunken residuals for each window.
@@ -383,8 +406,8 @@ def diff(data_dir, cell_file, output, bandwidth, stepsize, threshold, min_cells,
                 idx_celltypes,
                 celltype_1,
                 celltype_2,
-                total_cells
-                )
+                total_cells,
+            )
 
             # join outputs of all loops
             if len(output_chrom) == 0:
@@ -398,10 +421,12 @@ def diff(data_dir, cell_file, output, bandwidth, stepsize, threshold, min_cells,
             output_final = output_chrom
         else:
             for column in range(len(output_final)):
-                output_final[column] = np.append(output_final[column], output_chrom[column])
-                
+                output_final[column] = np.append(
+                    output_final[column], output_chrom[column]
+                )
+
     # sort descending for absolute t-values
-    idx = np.argsort(np.absolute(output_final[3])*-1)
+    idx = np.argsort(np.absolute(output_final[3]) * -1)
     for column in range(len(output_final)):
         output_final[column] = output_final[column][idx]
 
@@ -409,9 +434,9 @@ def diff(data_dir, cell_file, output, bandwidth, stepsize, threshold, min_cells,
     adj_p_val = calc_fdr(output_final[4] == "real")
     output_final.append(adj_p_val)
 
-    np.savetxt(output, np.transpose(output_final), delimiter="\t", fmt='%s')
+    np.savetxt(output, np.transpose(output_final), delimiter="\t", fmt="%s")
 
-    '''
+    """
     # reinclude at the end
     # remove permuted values and datatype array
     filter_datatype = output_final[4] == "real"
@@ -436,6 +461,6 @@ def diff(data_dir, cell_file, output, bandwidth, stepsize, threshold, min_cells,
         echo(f"found {differential} significant differentially methylated regions for {cell}.")
 
         np.savetxt(output, np.transpose(output_cell), delimiter = "\t", fmt = '%s')
-    '''
+    """
 
     return

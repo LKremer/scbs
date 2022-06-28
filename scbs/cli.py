@@ -279,6 +279,7 @@ def smooth_cli(**kwargs):
     smooth(**kwargs)
     timer.stop()
 
+
 # scan command
 @cli.command(
     name="scan",
@@ -364,11 +365,8 @@ def scan_cli(**kwargs):
     "data-dir",
     type=click.Path(exists=True, dir_okay=True, file_okay=False, readable=True),
 )
-
 @click.argument("cell_file", type=click.File("r"))
-
 @click.argument("output", type=click.File("w"))
-
 @click.option(
     "-bw",
     "--bandwidth",
@@ -396,15 +394,13 @@ def scan_cli(**kwargs):
     "most extreme genomic bins will be reported. Overlapping bins "
     "are merged.",
 )
-
 @click.option(
     "--min_cells",
     default=6,
-    type=click.IntRange(min=1, max=10),
+    type=click.IntRange(min=1, max=1e6),
     metavar="INTEGER",
-    show_default=True
+    show_default=True,
 )
-
 @click.option(
     "--threads",
     default=-1,
