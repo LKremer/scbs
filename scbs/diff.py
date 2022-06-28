@@ -10,11 +10,11 @@ from numba import njit, prange
 
 from .numerics import _calc_mean_shrunken_residuals
 from .smooth import _load_smoothed_chrom
-from .utils import _check_data_dir, _load_chrom_mat, echo, secho
+from .utils import _check_data_dir, _load_chrom_mat, echo
 
 # ignore division by 0 and division by NaN error
 np.seterr(divide="ignore", invalid="ignore")
-np.random.seed(42)
+
 
 def _output_file_handle(raw_path):
     path = raw_path.lower()
@@ -64,8 +64,8 @@ def calc_fdr(datatype):
 @njit
 def _find_peaks(smoothed_vars, swindow_centers, var_cutoff, half_bw):
     """
-    After we calculated the variance for each window, this function
-    merges overlapping windows above a variance threshold (var_cutoff).
+    After we calculated the t-statistic for each window, this function
+    merges overlapping windows above a t-statistic threshold (t_cutoff).
     Returns the start and end coordinates of the bigger merged peaks.
     """
     peak_starts = []
@@ -254,13 +254,16 @@ def calc_tstat_peaks(
     window_tstat_groups = [window_tstat * -1, window_tstat]
     # calculate t-statistic for group1 (low t-values) and group 2 (high t-values)
     # to make this possible the t-stat was multiplied by -1 for group1
+
     thresholds = []
     # this is the first=biggest chrom, so let's find our t-statistic threshold here
+    # the t-statistic threshold will be determined based on the largest chromosome.
+    # by default, we take the 98th percentile of all window t-statistics.
     if len(threshold_values) <= iteration:
         for tstat_windows, cell in zip(window_tstat_groups, cells):
             threshold_value = np.nanquantile(tstat_windows, 1 - threshold)
             echo(
-                f"Determined the variance threshold of {threshold_value} for {cell} of {datatype} data."
+                f"Determined threshold of {threshold_value} for {cell} of {datatype} data."
             )
             thresholds.append(threshold_value)
         threshold_values.append(np.asarray(thresholds))
@@ -268,8 +271,8 @@ def calc_tstat_peaks(
     for tstat_windows, cell, threshold_value in zip(
         window_tstat_groups, cells, threshold_values[iteration]
     ):
-        # merge overlapping windows with lowest and highest t-statistic, to get bigger regions
-        # of variable size
+        # merge overlapping windows with lowest and highest t-statistic,
+        # to get bigger regions of variable size
         peak_starts, peak_ends = _find_peaks(
             tstat_windows, genomic_positions, threshold_value, half_bw
         )
@@ -305,18 +308,15 @@ def calc_tstat_peaks(
 def diff(
     data_dir, cell_file, output, bandwidth, stepsize, threshold, min_cells, threads=-1
 ):
-    # exclude the following later on. uses pandas and it needs to be possible to chose groups
+    # exclude the following later on. uses pandas
     celltypes = pd.read_csv(cell_file, header=None).to_numpy().flatten()
     cells = []
-    # idxnan = [] #if numba error try List()
-    # position of nan will be used for permutations to keep them constant and only permute across the groups
+
     for i in range(len(celltypes)):
         if str(celltypes[i]) != "nan":
             cells.append(celltypes[i])
-        # else:
-        # idxnan.append(i)
 
-    # which categeorical celltypes are present in the input file (defines the two groups)
+    # which cell types are present in the input file (defines the two groups)
     cells = np.unique(cells)
 
     indices_g1 = np.empty([2, len(celltypes)], dtype=bool)
@@ -326,7 +326,7 @@ def diff(
     indices_g1[0] = (celltypes == cells[0]).flatten()
     indices_g2[0] = (celltypes == cells[1]).flatten()
 
-    # needs to be calculate for the permutation
+    # needs to be calculated for the permutation
     idx_celltypes = np.asarray(
         np.where((celltypes == cells[0]) | (celltypes == cells[1]))
     ).flatten()
@@ -343,15 +343,13 @@ def diff(
         numba.set_num_threads(threads)
     n_threads = numba.get_num_threads()
     half_bw = bandwidth // 2
-    # sort chroms by filesize. We start with largest chrom to find the var threshold
+    # sort chroms by file size. We start with largest chrom to find the threshold
     chrom_paths = sorted(
         glob(os.path.join(data_dir, "*.npz")),
         key=lambda x: os.path.getsize(x),
         reverse=True,
     )
 
-    # the t-statistic threshold will be determined based on the largest chromosome.
-    # by default, we take the 98th percentile of all window variances.
     threshold_values = []
     output_final = []
 
@@ -375,7 +373,7 @@ def diff(
         # slide windows along the chromosome and calculate the t-statistic of
         # mean shrunken residuals for each window.
         # do the same for the permutations
-        # generate a list including values for all perumations
+        # generate a list including values for all permutations
 
         output_chrom = []
         for iteration in range(len(indices_g1)):
@@ -425,7 +423,7 @@ def diff(
                     output_final[column], output_chrom[column]
                 )
 
-    # sort descending for absolute t-values
+    # sort descending by absolute t-statistic
     idx = np.argsort(np.absolute(output_final[3]) * -1)
     for column in range(len(output_final)):
         output_final[column] = output_final[column][idx]
@@ -437,7 +435,7 @@ def diff(
     np.savetxt(output, np.transpose(output_final), delimiter="\t", fmt="%s")
 
     """
-    # reinclude at the end
+    # include at the end
     # remove permuted values and datatype array
     filter_datatype = output_final[4] == "real"
     for column in range(len(output_final)):
@@ -446,7 +444,8 @@ def diff(
     
 
     # only important if there is two output files
-    # generate list of arrays according to selected celltypes and remove array with celltypes
+    # generate list of arrays according to selected celltypes 
+    # and remove array with celltypes
     # save both outputs
     # if datatype array is removed again change index from 5 to 4
     outputs = [output1, output2]
