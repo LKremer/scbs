@@ -283,8 +283,8 @@ def smooth_cli(**kwargs):
 @cli.command(
     name="scan",
     help=f"""
-    Scans the whole genome for variably methylated regions (VMRs). This works by 
-    sliding a window across the genome, calculating the variance of methylation per 
+    Scans the whole genome for variably methylated regions (VMRs). This works by
+    sliding a window across the genome, calculating the variance of methylation per
     window, and selecting windows above a variance threshold.
 
     {style("DATA_DIR", fg="green")} is the directory containing the methylation
@@ -309,8 +309,8 @@ def smooth_cli(**kwargs):
     type=click.IntRange(min=1, max=1e6),
     metavar="INTEGER",
     show_default=True,
-    help="Bandwidth of the variance windows in basepairs. Increase this ",
-    "value to find larger VMRs."
+    help="Bandwidth of the variance windows in basepairs. Increase this "
+    "value to find larger VMRs.",
 )
 @click.option(
     "--stepsize",
