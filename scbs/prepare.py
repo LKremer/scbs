@@ -47,7 +47,7 @@ def prepare(input_files, data_dir, input_format, round_sites, chunksize):
 
         echo(f"Writing to {mat_path} ...")
         sp_sparse.save_npz(mat_path, mat)
-        # os.remove(coo_path)  # delete temporary .coo file
+        _delete_coo_chunks(data_dir, chrom)  # delete temporary .coo file
 
     colname_path = _write_column_names(data_dir, cell_names)
     echo(f"\nWrote cell names to {colname_path}")
@@ -163,6 +163,12 @@ def _iter_chunks(data_dir, chrom):
     for chunk_path in sorted(chunk_paths):
         chunk = pd.read_csv(chunk_path, delimiter=",", header=None).values
         yield chunk
+
+
+def _delete_coo_chunks(data_dir, chrom):
+    chunk_paths = glob(os.path.join(data_dir, f"{chrom}_chunk*.coo"))
+    for chunk_path in chunk_paths:
+        os.remove(chunk_path)  # delete temporary .coo file
 
 
 @njit
