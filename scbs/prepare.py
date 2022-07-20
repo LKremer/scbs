@@ -2,16 +2,18 @@ import gzip
 import os
 import sys
 from datetime import datetime
+from glob import glob
 
 import numpy as np
 import pandas as pd
 import scipy.sparse as sp_sparse
+from numba import njit
 
 from . import __version__
 from .utils import echo, secho
 
 
-def prepare(input_files, data_dir, input_format, round_sites):
+def prepare(input_files, data_dir, input_format, round_sites, chunksize):
     cell_names = _get_cell_names(input_files)
     n_cells = len(cell_names)
     os.makedirs(data_dir, exist_ok=True)
@@ -26,7 +28,7 @@ def prepare(input_files, data_dir, input_format, round_sites):
     # more efficient format (CSR).
     echo(f"Processing {n_cells} methylation files...")
     coo_files, chrom_sizes = _dump_coo_files(
-        input_files, input_format, n_cells, data_dir, round_sites
+        input_files, input_format, n_cells, data_dir, round_sites, chunksize
     )
     echo(
         "\nStoring methylation data in 'compressed "
@@ -34,20 +36,18 @@ def prepare(input_files, data_dir, input_format, round_sites):
     )
 
     # read each COO file and convert the matrix to CSR format.
-    for chrom in coo_files:
+    for chrom, chrom_size in chrom_sizes.items():
         # create empty matrix
-        chrom_size = chrom_sizes[chrom]
         echo(f"Populating {chrom_size} x {n_cells} matrix for chromosome {chrom}...")
         # populate with values from temporary COO file
-        coo_path = os.path.join(data_dir, f"{chrom}.coo")
         mat_path = os.path.join(data_dir, f"{chrom}.npz")
-        mat = _load_csr_from_coo(coo_path, chrom_size, n_cells)
+        mat = _load_csr_from_coo(data_dir, chrom, chrom_size, n_cells)
         n_obs_cell += mat.getnnz(axis=0)
         n_meth_cell += np.ravel(np.sum(mat > 0, axis=0))
 
         echo(f"Writing to {mat_path} ...")
         sp_sparse.save_npz(mat_path, mat)
-        os.remove(coo_path)  # delete temporary .coo file
+        # os.remove(coo_path)  # delete temporary .coo file
 
     colname_path = _write_column_names(data_dir, cell_names)
     echo(f"\nWrote cell names to {colname_path}")
@@ -61,7 +61,7 @@ def prepare(input_files, data_dir, input_format, round_sites):
     )
     secho(
         f"\nSuccessfully stored methylation data for {n_cells} cells "
-        f"with {len(coo_files.keys())} chromosomes.",
+        f"with {len(chrom_sizes.keys())} chromosomes.",
         fg="green",
     )
 
@@ -102,7 +102,7 @@ def _get_cell_names(cov_files):
     return names
 
 
-def _dump_coo_files(fpaths, input_format, n_cells, output_dir, round_sites):
+def _dump_coo_files(fpaths, input_format, n_cells, output_dir, round_sites, chunksize):
     try:
         c_col, p_col, m_col, u_col, coverage, sep, header = _human_to_computer(
             input_format
@@ -123,6 +123,10 @@ def _dump_coo_files(fpaths, input_format, n_cells, output_dir, round_sites):
             cov_file, c_col, p_col, m_col, u_col, coverage, sep, header
         ):
             chrom, genomic_pos, n_meth, n_unmeth = line_vals
+            # to make the individual coo files smaller, we split each chromosome
+            # into ~10 Mbp chunks
+            chrom_chunk = int(genomic_pos // chunksize)
+            coo_tuple = (chrom, chrom_chunk)  # one coo file per chromosome chunk
 
             # deal with unexpected CpG sites that are not 1 or 0. These could be
             # caused by mapping artifacts, strand/allele-specific methylation, etc:
@@ -136,13 +140,16 @@ def _dump_coo_files(fpaths, input_format, n_cells, output_dir, round_sites):
             else:
                 meth_value = 1 if n_meth > 0 else -1
 
-            if chrom not in coo_files:
-                coo_path = os.path.join(output_dir, f"{chrom}.coo")
-                coo_files[chrom] = open(coo_path, "w")
-                chrom_sizes[chrom] = 0
+            if coo_tuple not in coo_files:
+                coo_path = os.path.join(
+                    output_dir, f"{chrom}_chunk{chrom_chunk:07}.coo"
+                )
+                coo_files[coo_tuple] = open(coo_path, "w")
+                if chrom not in chrom_sizes:
+                    chrom_sizes[chrom] = 0
             if genomic_pos > chrom_sizes[chrom]:
                 chrom_sizes[chrom] = genomic_pos
-            coo_files[chrom].write(f"{genomic_pos},{cell_n},{meth_value}\n")
+            coo_files[coo_tuple].write(f"{genomic_pos},{cell_n},{meth_value}\n")
     for fhandle in coo_files.values():
         # maybe somehow use try/finally or "with" to make sure
         # they're closed even when crashing
@@ -151,20 +158,48 @@ def _dump_coo_files(fpaths, input_format, n_cells, output_dir, round_sites):
     return coo_files, chrom_sizes
 
 
-def _load_csr_from_coo(coo_path, chrom_size, n_cells):
-    try:
-        coo = pd.read_csv(coo_path, delimiter=",", header=None).values
-        mat = sp_sparse.coo_matrix(
-            (coo[:, 2], (coo[:, 0], coo[:, 1])),
-            shape=(chrom_size + 1, n_cells),
-            dtype=np.int8,
+def _iter_chunks(data_dir, chrom):
+    chunk_paths = glob(os.path.join(data_dir, f"{chrom}_chunk*.coo"))
+    for chunk_path in sorted(chunk_paths):
+        chunk = pd.read_csv(chunk_path, delimiter=",", header=None).values
+        yield chunk
+
+
+@njit
+def _process_chunk(positions, indptr, last_pos, indptr_counter, indptr_i):
+    for pos in positions:
+        if pos > last_pos:
+            for __ in range(pos - last_pos):
+                indptr[indptr_i] = indptr_counter
+                indptr_i += 1
+            last_pos = pos
+        indptr_counter += 1
+    return last_pos, indptr_counter, indptr_i
+
+
+def _load_csr_from_coo(data_dir, chrom, chrom_size, n_cells):
+    data_chunks = []
+    indices_chunks = []
+    # indptr size is n_rows + 1
+    indptr = np.empty(chrom_size + 2, dtype=np.int32)
+
+    last_pos = -1
+    indptr_counter = 0
+    indptr_i = 0
+    for chunk in _iter_chunks(data_dir, chrom):
+        # sort the chunk to facilitate COO to CSR conversion
+        sorting_idx = np.lexsort((chunk[:, 1], chunk[:, 0]))
+        last_pos, indptr_counter, indptr_i = _process_chunk(
+            chunk[sorting_idx, 0], indptr, last_pos, indptr_counter, indptr_i
         )
-        echo("Converting from COO to CSR...")
-        mat = mat.tocsr()  # convert from COO to CSR format
-    except Exception as exc:
-        raise type(exc)(f"{exc} (problematic file: {coo_path})").with_traceback(
-            sys.exc_info()[2]
-        )
+        # in a sorted COO file, two of the columns are identical to the
+        # data in indices vectors of the CSR format
+        data_chunks.append(chunk[sorting_idx, 2].astype(np.int8))
+        indices_chunks.append(chunk[sorting_idx, 1].astype(np.uint16))
+    indptr[indptr_i] = indptr_counter  # last missing index pointer value
+    data = np.concatenate(data_chunks)
+    indices = np.concatenate(indices_chunks)
+    mat = sp_sparse.csr_matrix((data, indices, indptr), shape=(chrom_size + 1, n_cells))
     return mat
 
 

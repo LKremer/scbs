@@ -125,6 +125,16 @@ def cli():
     """,
 )
 @click.option(
+    "--chunksize",
+    type=click.IntRange(min=1),
+    metavar="INTEGER",
+    default=1e7,
+    help="""
+    The data of each chromosome is read in chunks [default: 10 Mb] to reduce memory
+    requirements. If you are running out of RAM, decrease the chunk size (in bp).
+    """,
+)
+@click.option(
     "--input-format",
     default="bismark",
     help="""
