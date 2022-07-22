@@ -130,7 +130,7 @@ def cli():
     metavar="INTEGER",
     default=1e7,
     help="""
-    The data of each chromosome is read in chunks [default: 10 Mb] to reduce memory
+    The data of each chromosome is read in chunks [default: 10 Mbp] to reduce memory
     requirements. If you are running out of RAM, decrease the chunk size (in bp).
     """,
 )

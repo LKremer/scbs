@@ -1,7 +1,7 @@
 import gzip
 import os
 import sys
-from datetime import datetime
+from datetime import datetime, timedelta
 from glob import glob
 
 import numpy as np
@@ -14,6 +14,7 @@ from .utils import echo, secho
 
 
 def prepare(input_files, data_dir, input_format, round_sites, chunksize):
+    begin_time = datetime.now()  # to log runtime
     cell_names = _get_cell_names(input_files)
     n_cells = len(cell_names)
     os.makedirs(data_dir, exist_ok=True)
@@ -55,9 +56,12 @@ def prepare(input_files, data_dir, input_format, round_sites, chunksize):
     echo(f"Wrote summary stats for each cell to {stats_path}")
     _write_run_info(
         os.path.join(data_dir, "run_info.txt"),
-        input_files=input_files,
+        begin_time,
         data_dir=data_dir,
         input_format=input_format,
+        round_sites=round_sites,
+        chunksize=chunksize,
+        input_files=input_files,
     )
     secho(
         f"\nSuccessfully stored methylation data for {n_cells} cells "
@@ -66,21 +70,24 @@ def prepare(input_files, data_dir, input_format, round_sites, chunksize):
     )
 
 
-def _write_run_info(fpath, **kwargs):
+def _write_run_info(fpath, begin_time, **kwargs):
     """On prepare, write scbs version, run date and parameters to a logfile"""
+    now = datetime.now()
+    runtime = timedelta(seconds=(now - begin_time).seconds)
     with open(fpath, "w") as log:
-        now = datetime.now().strftime("%a %b %d %H:%M:%S %Y")
         log.write(
-            "This directory was generated\n"
-            f"on {now}\nwith scbs prepare version {__version__}\n"
-            "with the following parameters:"
+            "This directory was generated "
+            f"on {now.strftime('%a %b %d %H:%M:%S %Y')}\n"
+            f"with scbs prepare version {__version__}.\n"
+            f"The total runtime was {runtime} (hour:min:s).\n"
+            "\nThe following parameters were used:"
         )
         for arg, value in kwargs.items():
-            log.write(f"\n\n{arg}\n")
+            log.write(f"\n\n{arg}:\n")
             if isinstance(value, (list, tuple, set)):
                 log.write("\n".join(str(v) for v in value))
             else:
-                log.write(value)
+                log.write(str(value))
 
 
 def _get_cell_names(cov_files):
@@ -124,7 +131,7 @@ def _dump_coo_files(fpaths, input_format, n_cells, output_dir, round_sites, chun
         ):
             chrom, genomic_pos, n_meth, n_unmeth = line_vals
             # to make the individual coo files smaller, we split each chromosome
-            # into ~10 Mbp chunks
+            # into chunks (of size 10 Mbp by default)
             chrom_chunk = int(genomic_pos // chunksize)
             coo_tuple = (chrom, chrom_chunk)  # one coo file per chromosome chunk
 
