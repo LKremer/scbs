@@ -5,7 +5,6 @@ from glob import glob
 
 import numba
 import numpy as np
-import pandas as pd
 from numba import njit, prange
 
 from .numerics import _calc_mean_shrunken_residuals
@@ -14,6 +13,8 @@ from .utils import _check_data_dir, _load_chrom_mat, echo
 
 # ignore division by 0 and division by NaN error
 np.seterr(divide="ignore", invalid="ignore")
+
+np.random.seed(5)
 
 
 def _output_file_handle(raw_path):
@@ -27,12 +28,11 @@ def _output_file_handle(raw_path):
     return handle
 
 
-@njit
 def permuted_indices(idx_celltypes, celltype_1, celltype_2, total_cells):
     permutation = np.random.permutation(idx_celltypes)
 
-    index_g1 = np.zeros(total_cells, dtype=numba.boolean)
-    index_g2 = np.zeros(total_cells, dtype=numba.boolean)
+    index_g1 = np.zeros(total_cells, dtype=bool)
+    index_g2 = np.zeros(total_cells, dtype=bool)
 
     for i in permutation[celltype_1]:
         index_g1[i] = True
@@ -146,14 +146,9 @@ def _move_windows(
     smoothed_vals,
     n_cells,
     chrom_len,
-    group1_index,
-    group2_index,
+    index,
     min_cells,
     datatype,
-    idx_celltypes,
-    celltype_1,
-    celltype_2,
-    total_cells,
 ):
     """
     Move the sliding window along the whole chromosome.
@@ -164,7 +159,6 @@ def _move_windows(
     """
     windows = np.arange(start, end, stepsize)
     t_array = np.empty(windows.shape, dtype=np.float64)
-    scanned_region = 0
 
     for i in prange(windows.shape[0]):
         pos = windows[i]
@@ -178,20 +172,24 @@ def _move_windows(
             n_cells,
             chrom_len,
         )
-        scanned_region += stepsize
 
-        group1 = mean_shrunk_resid[group1_index]
-        group1 = group1[~np.isnan(group1)]
+        # the real indices are stored in the first "column".
+        if datatype == "real":
+            group1 = mean_shrunk_resid[index[0, 0]]
+            group1 = group1[~np.isnan(group1)]
 
-        group2 = mean_shrunk_resid[group2_index]
-        group2 = group2[~np.isnan(group2)]
+            group2 = mean_shrunk_resid[index[1, 0]]
+            group2 = group2[~np.isnan(group2)]
 
-        # re-permute indices after 2Mbp
-        if datatype == "permuted" and scanned_region >= 2000000:
-            group1_index, group2_index = permuted_indices(
-                idx_celltypes, celltype_1, celltype_2, total_cells
-            )
-            scanned_region = 0
+        # A new permutation is used every 2Mbp. Therefore, the next "column" of the array has to be accessed.
+        # The column index (chrom_bin) equals the window position on the chromosome separated by 2Mbp.
+        else:
+            chrom_bin = pos // 2000000 + 1
+            group1 = mean_shrunk_resid[index[0, chrom_bin]]
+            group1 = group1[~np.isnan(group1)]
+
+            group2 = mean_shrunk_resid[index[1, chrom_bin]]
+            group2 = group2[~np.isnan(group2)]
 
         t, s_delta, df = welch_t_test(group1, group2, min_cells)
         t_array[i] = t
@@ -200,12 +198,9 @@ def _move_windows(
 
 
 def calc_tstat_peaks(
-    threshold,
     chrom,
     datatype,
     cells,
-    cpg_pos_chrom,
-    stepsize,
     half_bw,
     data_chrom,
     indices_chrom,
@@ -213,63 +208,19 @@ def calc_tstat_peaks(
     smoothed_vals,
     n_cells,
     chrom_len,
-    group1_index,
-    group2_index,
+    index,
     min_cells,
-    threshold_values,
-    iteration,
-    idx_celltypes,
-    celltype_1,
-    celltype_2,
-    total_cells,
+    threshold_datatype,
+    window_tstat_groups,
+    genomic_positions,
 ):
     output = []
     for _ in range(6):
         array = np.empty(0)
         output.append(array)
 
-    start = cpg_pos_chrom[0] + half_bw + 1
-    end = cpg_pos_chrom[-1] - half_bw - 1
-    genomic_positions, window_tstat = _move_windows(
-        start,
-        end,
-        stepsize,
-        half_bw,
-        data_chrom,
-        indices_chrom,
-        indptr_chrom,
-        smoothed_vals,
-        n_cells,
-        chrom_len,
-        group1_index,
-        group2_index,
-        min_cells,
-        datatype,
-        idx_celltypes,
-        celltype_1,
-        celltype_2,
-        total_cells,
-    )
-
-    window_tstat_groups = [window_tstat * -1, window_tstat]
-    # calculate t-statistic for group1 (low t-values) and group 2 (high t-values)
-    # to make this possible the t-stat was multiplied by -1 for group1
-
-    thresholds = []
-    # this is the first=biggest chrom, so let's find our t-statistic threshold here
-    # the t-statistic threshold will be determined based on the largest chromosome.
-    # by default, we take the 98th percentile of all window t-statistics.
-    if len(threshold_values) <= iteration:
-        for tstat_windows, cell in zip(window_tstat_groups, cells):
-            threshold_value = np.nanquantile(tstat_windows, 1 - threshold)
-            echo(
-                f"Determined threshold of {threshold_value} for {cell} of {datatype} data."
-            )
-            thresholds.append(threshold_value)
-        threshold_values.append(np.asarray(thresholds))
-
     for tstat_windows, cell, threshold_value in zip(
-        window_tstat_groups, cells, threshold_values[iteration]
+        window_tstat_groups, cells, threshold_datatype
     ):
         # merge overlapping windows with lowest and highest t-statistic,
         # to get bigger regions of variable size
@@ -289,11 +240,23 @@ def calc_tstat_peaks(
                 n_cells,
                 chrom_len,
             )
-            group1 = mean_shrunk_resid[group1_index]
-            group1 = group1[~np.isnan(group1)]
+            # the real indices are stored in the first "column".
+            if datatype == "real":
+                group1 = mean_shrunk_resid[index[0, 0]]
+                group1 = group1[~np.isnan(group1)]
 
-            group2 = mean_shrunk_resid[group2_index]
-            group2 = group2[~np.isnan(group2)]
+                group2 = mean_shrunk_resid[index[1, 0]]
+                group2 = group2[~np.isnan(group2)]
+
+            # A new permutation is used every 2Mbp. Therefore, the next "column" of the array has to be accessed.
+            # The column index (chrom_bin) equals the middle of the merged peak separated by 2Mbp.
+            else:
+                chrom_bin = int(((pe - ps) / 2 + ps) // 2000000 + 1)
+                group1 = mean_shrunk_resid[index[0, chrom_bin]]
+                group1 = group1[~np.isnan(group1)]
+
+                group2 = mean_shrunk_resid[index[1, chrom_bin]]
+                group2 = group2[~np.isnan(group2)]
 
             t_stat, s_delta, df = welch_t_test(group1, group2, min_cells)
 
@@ -302,14 +265,13 @@ def calc_tstat_peaks(
             for datapoint in range(len(datapoints)):
                 output[datapoint] = np.append(output[datapoint], datapoints[datapoint])
 
-    return output, threshold_values
+    return output
 
 
 def diff(
     data_dir, cell_file, output, bandwidth, stepsize, threshold, min_cells, threads=-1
 ):
-    # exclude the following later on. uses pandas
-    celltypes = pd.read_csv(cell_file, header=None).to_numpy().flatten()
+    celltypes = np.loadtxt(cell_file, dtype=str)
     cells = []
 
     for i in range(len(celltypes)):
@@ -319,12 +281,8 @@ def diff(
     # which cell types are present in the input file (defines the two groups)
     cells = np.unique(cells)
 
-    indices_g1 = np.empty([2, len(celltypes)], dtype=bool)
-    indices_g2 = np.empty([2, len(celltypes)], dtype=bool)
-
-    # first array will be index of real data
-    indices_g1[0] = (celltypes == cells[0]).flatten()
-    indices_g2[0] = (celltypes == cells[1]).flatten()
+    index_realg1 = (celltypes == cells[0]).flatten()
+    index_realg2 = (celltypes == cells[1]).flatten()
 
     # needs to be calculated for the permutation
     idx_celltypes = np.asarray(
@@ -343,6 +301,7 @@ def diff(
         numba.set_num_threads(threads)
     n_threads = numba.get_num_threads()
     half_bw = bandwidth // 2
+
     # sort chroms by file size. We start with largest chrom to find the threshold
     chrom_paths = sorted(
         glob(os.path.join(data_dir, "*.npz")),
@@ -350,7 +309,7 @@ def diff(
         reverse=True,
     )
 
-    threshold_values = []
+    threshold_values = np.zeros([2, 2])
     output_final = []
 
     for mat_path in chrom_paths:
@@ -365,29 +324,27 @@ def diff(
         else:
             echo(f"Scanning chromosome {chrom} ...")
 
-        # calculate permutation
-        indices_g1[1], indices_g2[1] = permuted_indices(
-            idx_celltypes, celltype_1, celltype_2, total_cells
-        )
-
-        # slide windows along the chromosome and calculate the t-statistic of
-        # mean shrunken residuals for each window.
-        # do the same for the permutations
-        # generate a list including values for all permutations
+        # permute data every 2Mbp
+        # store necessary number of permutations for the according chromosome in an array
+        # while scanning the chromosome every 2 Mbp another permutation ("column" of the array) can be used
+        n_perm = chrom_len // 2000000
+        indices = np.empty([2, n_perm + 2, len(celltypes)], dtype=bool)
+        # first "column" holds the real indices of both cell types
+        indices[0][0] = index_realg1
+        indices[1][0] = index_realg2
+        for i in range(n_perm + 1):
+            indices[0][i + 1], indices[1][i + 1] = permuted_indices(
+                idx_celltypes, celltype_1, celltype_2, total_cells
+            )
 
         output_chrom = []
-        for iteration in range(len(indices_g1)):
-            if iteration == 0:
-                datatype = "real"
-            else:
-                datatype = "permuted"
-
-            output_iteration, threshold_values = calc_tstat_peaks(
-                threshold,
-                chrom,
-                datatype,
-                cells,
-                cpg_pos_chrom,
+        datatypes = ["real", "permuted"]
+        for datatype in datatypes:
+            start = cpg_pos_chrom[0] + half_bw + 1
+            end = cpg_pos_chrom[-1] - half_bw - 1
+            genomic_positions, window_tstat = _move_windows(
+                start,
+                end,
                 stepsize,
                 half_bw,
                 mat.data,
@@ -396,15 +353,62 @@ def diff(
                 smoothed_cpg_vals,
                 n_cells,
                 chrom_len,
-                indices_g1[iteration],
-                indices_g2[iteration],
+                indices,
                 min_cells,
-                threshold_values,
-                iteration,
-                idx_celltypes,
-                celltype_1,
-                celltype_2,
-                total_cells,
+                datatype,
+            )
+
+            # calculate t-statistic for group1 (low t-values) and group 2 (high t-values)
+            # to make this possible the t-stat was multiplied by -1 for group1
+            window_tstat_groups = [window_tstat * -1, window_tstat]
+
+            # this is the first=biggest chrom, so let's find our t-statistic threshold here
+            # the t-statistic threshold will be determined based on the largest chromosome.
+            # by default, we take the 98th percentile of all window t-statistics.
+            # thresholds for real indices are stored in the first and for permuted indices in the second array
+            iteration = 0
+            if threshold_values[1, 1] == 0:
+                for tstat_windows, cell in zip(window_tstat_groups, cells):
+                    if datatype == "real":
+                        threshold_values[0, iteration] = np.nanquantile(
+                            tstat_windows, 1 - threshold
+                        )
+                        echo(
+                            f"Determined threshold of {threshold_values[0,iteration]} for {cell} of {datatype} data."
+                        )
+                    if datatype == "permuted":
+                        threshold_values[1, iteration] = np.nanquantile(
+                            tstat_windows, 1 - threshold
+                        )
+                        # exclude the following print statement at the end
+                        echo(
+                            f"Determined threshold of {threshold_values[1,iteration]} for {cell} of {datatype} data."
+                        )
+                    iteration += 1
+
+            if datatype == "real":
+                threshold_datatype = threshold_values[0]
+
+            if datatype == "permuted":
+                threshold_datatype = threshold_values[1]
+
+            # calculate t-statistic for merged peaks
+            output_iteration = calc_tstat_peaks(
+                chrom,
+                datatype,
+                cells,
+                half_bw,
+                mat.data,
+                mat.indices,
+                mat.indptr,
+                smoothed_cpg_vals,
+                n_cells,
+                chrom_len,
+                indices,
+                min_cells,
+                threshold_datatype,
+                window_tstat_groups,
+                genomic_positions,
             )
 
             # join outputs of all loops
