@@ -269,8 +269,7 @@ def calc_tstat_peaks(
 
 
 def diff(
-    data_dir, cell_file, output, bandwidth, stepsize, threshold, min_cells, threads=-1
-):
+    data_dir, cell_file, output, bandwidth, stepsize, threshold, min_cells, threads=-1, debug=False):
     celltypes = np.loadtxt(cell_file, dtype=str)
     cells = []
 
@@ -327,12 +326,12 @@ def diff(
         # permute data every 2Mbp
         # store necessary number of permutations for the according chromosome in an array
         # while scanning the chromosome every 2 Mbp another permutation ("column" of the array) can be used
-        n_perm = chrom_len // 2000000
-        indices = np.empty([2, n_perm + 2, len(celltypes)], dtype=bool)
+        n_perm = chrom_len // 2000000 + 1
+        indices = np.empty([2, n_perm + 1, len(celltypes)], dtype=bool)
         # first "column" holds the real indices of both cell types
         indices[0][0] = index_realg1
         indices[1][0] = index_realg2
-        for i in range(n_perm + 1):
+        for i in range(n_perm):
             indices[0][i + 1], indices[1][i + 1] = permuted_indices(
                 idx_celltypes, celltype_1, celltype_2, total_cells
             )
@@ -380,10 +379,11 @@ def diff(
                         threshold_values[1, iteration] = np.nanquantile(
                             tstat_windows, 1 - threshold
                         )
-                        # exclude the following print statement at the end
-                        echo(
-                            f"Determined threshold of {threshold_values[1,iteration]} for {cell} of {datatype} data."
-                        )
+
+                        if debug:
+                            echo(
+                                f"Determined threshold of {threshold_values[1,iteration]} for {cell} of {datatype} data."
+                            )
                     iteration += 1
 
             if datatype == "real":
@@ -436,17 +436,19 @@ def diff(
     adj_p_val = calc_fdr(output_final[4] == "real")
     output_final.append(adj_p_val)
 
+    output_final[1] = output_final[1].astype("int")
+    output_final[2] = output_final[2].astype("int")
+
+    if not debug:
+        # remove permuted values and datatype array
+        filter_datatype = output_final[4] == "real"
+        for column in range(len(output_final)):
+            output_final[column] = output_final[column][filter_datatype]
+        del output_final[4]
+
     np.savetxt(output, np.transpose(output_final), delimiter="\t", fmt="%s")
 
     """
-    # include at the end
-    # remove permuted values and datatype array
-    filter_datatype = output_final[4] == "real"
-    for column in range(len(output_final)):
-        output_final[column] = output_final[column][filter_datatype]
-    del output_final[4]
-    
-
     # only important if there is two output files
     # generate list of arrays according to selected celltypes 
     # and remove array with celltypes
