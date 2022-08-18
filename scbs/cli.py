@@ -125,6 +125,16 @@ def cli():
     """,
 )
 @click.option(
+    "--chunksize",
+    type=click.IntRange(min=1),
+    metavar="INTEGER",
+    default=1e7,
+    help="""
+    The data of each chromosome is read in chunks [default: 10 Mbp] to reduce memory
+    requirements. If you are running out of RAM, decrease the chunk size (in bp).
+    """,
+)
+@click.option(
     "--input-format",
     default="bismark",
     help="""
@@ -135,17 +145,16 @@ def cli():
     You can specify a custom format by specifying the separator, whether the
     file has a header, and which information is stored in which columns. These
     values should be separated by ':' and enclosed by quotation marks, for
-    example --input-format '1:2:3:4m:\\t:1'
+    example --input-format '1:2:3:4u:\\t:1'
 
     \b
-    The six ':'-separated values denote:
-    1. The column number that contains the chromosome name
-    2. The column number that contains the genomic position
-    3. The column number that contains the methylated counts
-    4. The column number that contains either unmethylated counts (u) or the total
-    coverage (c) followed by either 'm' or 'c', e.g. '4c' to denote that the 4th column
-    contains the coverage
-    5. The separator, e.g. '\\t' for tsv files or ',' for csv
+    The six ':'-separated values denote the number of the columns that contain
+    1. the chromosome name
+    2. the genomic position
+    3. the methylated counts
+    4. either the total coverage (c) or the number of unmethylated counts (u), followed
+    by either 'c' or 'u', e.g. '4c' to denote that the 4th column contains the coverage
+    5. The separator, e.g. '\\t' or 'TAB' for tsv files or ',' for csv
     6. Either '1' if the file has a header or '0' if it does not have a header
     All column numbers are 1-indexed, i.e. to define the first column use '1' and not
     '0'.""",
@@ -284,16 +293,17 @@ def smooth_cli(**kwargs):
 @cli.command(
     name="scan",
     help=f"""
-    Scans the whole genome for regions of variable methylation. This works by sliding
-    a window across the genome, calculating the variance of methylation per window,
-    and selecting windows above a variance threshold.
+    Scans the whole genome for variably methylated regions (VMRs). This works by
+    sliding a window across the genome, calculating the variance of methylation per
+    window, and selecting windows above a variance threshold.
+
     {style("DATA_DIR", fg="green")} is the directory containing the methylation
     matrices produced by running 'scbs prepare', as well as the smoothed methylation
     values produced by running 'scbs smooth'.
     {style("OUTPUT", fg="green")} is the path of the output file in '.bed' format,
-    containing the variable windows that were found.
+    containing the VMRs that were found.
     """,
-    short_help="Scan the genome to discover regions with variable methylation",
+    short_help="Scan the genome to discover variably methylated regions",
     no_args_is_help=True,
 )
 @click.argument(
@@ -308,7 +318,8 @@ def smooth_cli(**kwargs):
     type=click.IntRange(min=1, max=1e6),
     metavar="INTEGER",
     show_default=True,
-    help="Bandwidth of the variance windows in basepairs.",
+    help="Bandwidth of the variance windows in basepairs. Increase this "
+    "value to find larger VMRs.",
 )
 @click.option(
     "--stepsize",
@@ -316,7 +327,8 @@ def smooth_cli(**kwargs):
     type=click.IntRange(min=1, max=1e6),
     metavar="INTEGER",
     show_default=True,
-    help="Step size of the variance windows in basepairs.",
+    help="Step size of the variance windows in basepairs. Increase "
+    "this value to gain speed, at the cost of some accuracy.",
 )
 @click.option(
     "--var-threshold",

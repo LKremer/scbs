@@ -1,3 +1,7 @@
-# ignore generated html files,
 *.pyc
-*whl
+*.whl
+*.html
+*.ipynb
+*.csv
+*.sh
+*.bed

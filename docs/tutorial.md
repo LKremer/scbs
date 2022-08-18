@@ -105,6 +105,8 @@ scbs profile --strand-column 6 scbs_tutorial_data/Mus_musculus.GRCm38.102_TSS.be
 ```
 Again, we can use R or any other language to inspect the TSS profiles:
 ```r
+library(tidyverse)
+
 profile_df <- read_csv("TSS_profile.csv") %>% 
   mutate(position_binned = round(position, -1L)) %>% 
   group_by(position_binned, cell_name) %>% 

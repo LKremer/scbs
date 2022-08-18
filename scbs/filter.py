@@ -30,7 +30,7 @@ def _filter_by_name(file, cell_stats_path, keep=True):
                 f"{fpath} lists cell '{cell}', but it does "
                 f"not exist in '{cell_stats_path}'."
             )
-    return cells_to_keep_idx
+    return cells_to_keep_idx, len(available_cells)
 
 
 def _filter_by_thresholds(min_sites, max_sites, min_meth, max_meth, cell_stats_path):
@@ -59,13 +59,7 @@ def _filter_by_thresholds(min_sites, max_sites, min_meth, max_meth, cell_stats_p
     for threshold, count in counter.items():
         if count:
             echo(f"{count} cells did not pass the --{threshold} threshold.")
-    n_filtered = n_cells - len(cells_to_keep_idx)
-    secho(
-        f"\nFiltering {n_filtered} of {n_cells} cells "
-        f"({n_filtered/n_cells:.2%})...\n",
-        fg="green",
-    )
-    return cells_to_keep_idx
+    return cells_to_keep_idx, n_cells
 
 
 def _filter_text_file(fpath, rows_to_keep, fpath_out, header=False):
@@ -76,6 +70,26 @@ def _filter_text_file(fpath, rows_to_keep, fpath_out, header=False):
         for cell_i, row in enumerate(infile):
             if cell_i in rows_to_keep:
                 outfile.write(row)
+
+
+def _check_cell_number(n, n_before):
+    # make sure that enough cells are left after filtering
+    secho(
+        f"\nKeeping {n} of {n_before} cells " f"({n/n_before:.2%})...\n",
+        fg="green",
+    )
+    if n < 1:
+        raise Exception(
+            "Your filtering options would mean that "
+            "no cells are left after filtering. "
+            "This is not enough to continue. Aborting."
+        )
+    elif n <= 30:
+        secho(
+            f"Warning: Only very few cells ({n}) are left after filtering! "
+            "This is probably too low for VMR detection.",
+            fg="red",
+        )
 
 
 def filter_(
@@ -93,18 +107,20 @@ def filter_(
                 "will be ignored since you provided --cell-names.\n",
                 fg="red",
             )
-        cell_idx = _filter_by_name(cell_names, stats_path, keep=keep)
+        cell_idx, n_cells_prefilter = _filter_by_name(cell_names, stats_path, keep=keep)
     else:
         if (min_meth and min_meth <= 1) or (max_meth and max_meth <= 1):
-            echo(
+            secho(
                 "Warning: Your methylation thresholds are very low, "
                 "please make sure that you specified a percentage between "
                 "0 and 100.",
                 fg="red",
             )
-        cell_idx = _filter_by_thresholds(
+        cell_idx, n_cells_prefilter = _filter_by_thresholds(
             min_sites, max_sites, min_meth, max_meth, stats_path
         )
+
+    _check_cell_number(len(cell_idx), n_cells_prefilter)
 
     os.makedirs(filtered_dir, exist_ok=True)
     chrom_paths = glob(os.path.join(data_dir, "*.npz"))

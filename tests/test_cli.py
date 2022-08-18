@@ -2,7 +2,6 @@ import os
 import shutil
 
 import pytest
-import scipy.sparse as sp_sparse
 from click.testing import CliRunner
 from pandas import read_csv
 
@@ -185,6 +184,15 @@ def test_filter_cli_threshold(tmp_path):
     with open(os.path.join(p, "cell_stats.csv")) as csv:
         assert csv.readline().startswith("cell_name,")
         assert csv.readline().startswith("b,")
+
+
+def test_filter_cli_toostrict(tmp_path):
+    p = os.path.join(tmp_path, "filtered_data_dir")
+    runner = CliRunner()
+    result = runner.invoke(
+        cli, ["filter", "--min-meth", "100", "tests/data/tiny/data_dir/", p]
+    )
+    assert result.exit_code == 1, result.output
 
 
 def test_filter_cli_keep(tmp_path):
