@@ -38,6 +38,7 @@ def test_prepare_cli(tmp_path):
             "cell_name,n_obs,n_meth,global_meth_frac\n" "a,5,2,0.4\n" "b,5,3,0.6\n"
         )
 
+
 def test_diff_cli(tmp_path):
     outfile = os.path.join(tmp_path, "dmr.bed")
     runner = CliRunner()
@@ -47,13 +48,14 @@ def test_diff_cli(tmp_path):
             "diff",
             "tests/data/tiny_diff/",
             "tests/data/tiny_diff/celltypes.txt",
-            "--min_cells",
+            "--min-cells",
             "3",
             outfile,
         ],
     )
     assert result.exit_code == 0, result.output
-    assert "Determined threshold of 2.4871385120811462 for neuroblast of real data." in result.output
+    assert "Determined threshold of 2.4871385120811462 for neuroblast of real data." \
+           in result.output
     dmr = read_csv(outfile, sep="\t", header=None)
     assert dmr[0].sum() == 5324
     assert dmr[1].sum() == 31250980767
@@ -64,6 +66,7 @@ def test_diff_cli(tmp_path):
     assert dmr[0][493] == 1
     assert dmr[2][135] == 69439700
     assert dmr[4][237] == "neuroblast"
+
 
 def test_prepare_rounded_cli(tmp_path):
     runner = CliRunner()

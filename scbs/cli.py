@@ -347,8 +347,9 @@ def scan_cli(**kwargs):
 @cli.command(
     name="diff",
     help=f"""
-    Scans the whole genome for regions of differential methylation between two cell types. 
-    This works by sliding a window across the genome, calculating the t-statistic of methylation per window,
+    Scans the whole genome for regions of differential methylation
+    between two cell types. This works by sliding a window across the genome,
+    calculating the t-statistic of methylation per window,
     and selecting windows above a t-statistic threshold.
 
     {style("DATA_DIR", fg="green")} is the directory containing the methylation
@@ -356,10 +357,10 @@ def scan_cli(**kwargs):
     values produced by running 'scbs smooth'.
 
     {style("OUTPUT", fg="green")} is the path of the output file in '.bed' format,
-    containing the differentially methylated regions, t-statistic, cell type, 
+    containing the differentially methylated regions, t-statistic, cell type,
     and adjusted p-value that were found.
     """,
-    short_help="Scan the genome to discover regions with differential methylation between cell types",
+    short_help="Scan the genome to discover regions with differential methylation",
     no_args_is_help=True,
 )
 @click.argument(
@@ -396,7 +397,7 @@ def scan_cli(**kwargs):
     "are merged.",
 )
 @click.option(
-    "--min_cells",
+    "--min-cells",
     default=6,
     type=click.IntRange(min=1, max=1e6),
     metavar="INTEGER",
@@ -411,7 +412,7 @@ def scan_cli(**kwargs):
 @click.option(
     "--debug",
     is_flag=True,
-    help="Use to print thresholds for permuted data and keep permuted data in output file",
+    help="Use to print thresholds for permuted data and keep it in output file",
 )
 def diff_cli(**kwargs):
     from .diff import diff

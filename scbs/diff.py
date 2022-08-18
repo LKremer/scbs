@@ -1,4 +1,3 @@
-import gzip
 import math
 import os
 from glob import glob
@@ -10,22 +9,12 @@ from numba import njit, prange
 from .numerics import _calc_mean_shrunken_residuals
 from .smooth import _load_smoothed_chrom
 from .utils import _check_data_dir, _load_chrom_mat, echo
+from .scbs import _find_peaks
 
 # ignore division by 0 and division by NaN error
 np.seterr(divide="ignore", invalid="ignore")
 
 np.random.seed(5)
-
-
-def _output_file_handle(raw_path):
-    path = raw_path.lower()
-    if path.endswith(".gz"):
-        handle = gzip.open(raw_path, "wt")
-    elif path.endswith(".csv"):
-        handle = open(raw_path, "w")
-    else:
-        handle = open(raw_path + ".csv", "w")
-    return handle
 
 
 def permuted_indices(idx_celltypes, celltype_1, celltype_2, total_cells):
@@ -61,38 +50,6 @@ def calc_fdr(datatype):
         adj_p_val_arr[i] = adj_p_val
 
     return adj_p_val_arr
-
-
-@njit
-def _find_peaks(smoothed_vars, swindow_centers, var_cutoff, half_bw):
-    """
-    After we calculated the t-statistic for each window, this function
-    merges overlapping windows above a t-statistic threshold (t_cutoff).
-    Returns the start and end coordinates of the bigger merged peaks.
-    """
-    peak_starts = []
-    peak_ends = []
-    in_peak = False
-    for var, pos in zip(smoothed_vars, swindow_centers):
-        if var > var_cutoff:
-            if not in_peak:
-                # entering new peak
-                in_peak = True
-                if peak_ends and pos - half_bw <= max(peak_ends):
-                    # it's not really a new peak, the last peak wasn't
-                    # finished, there was just a small dip...
-                    peak_ends.pop()
-                else:
-                    peak_starts.append(pos - half_bw)
-        else:
-            if in_peak:
-                # exiting peak
-                in_peak = False
-                peak_ends.append(pos + half_bw)
-    if in_peak:
-        peak_ends.append(pos)
-    assert len(peak_starts) == len(peak_ends)
-    return peak_starts, peak_ends
 
 
 @njit(nogil=True)
@@ -183,8 +140,10 @@ def _move_windows(
             group2 = mean_shrunk_resid[index[1, 0]]
             group2 = group2[~np.isnan(group2)]
 
-        # A new permutation is used every 2Mbp. Therefore, the next "column" of the array has to be accessed.
-        # The column index (chrom_bin) equals the window position on the chromosome separated by 2Mbp.
+        # A new permutation is used every 2Mbp.
+        # Therefore, the next "column" of the array has to be accessed.
+        # The column index (chrom_bin)
+        # equals the window position on the chromosome separated by 2Mbp.
         else:
             chrom_bin = pos // 2000000 + 1
             group1 = mean_shrunk_resid[index[0, chrom_bin]]
@@ -250,8 +209,10 @@ def calc_tstat_peaks(
                 group2 = mean_shrunk_resid[index[1, 0]]
                 group2 = group2[~np.isnan(group2)]
 
-            # A new permutation is used every 2Mbp. Therefore, the next "column" of the array has to be accessed.
-            # The column index (chrom_bin) equals the middle of the merged peak separated by 2Mbp.
+            # A new permutation is used every 2Mbp.
+            # Therefore, the next "column" of the array has to be accessed.
+            # The column index (chrom_bin)
+            # equals the middle of the merged peak separated by 2Mbp.
             else:
                 chrom_bin = int(((pe - ps) / 2 + ps) // 2000000 + 1)
                 group1 = mean_shrunk_resid[index[0, chrom_bin]]
@@ -334,16 +295,18 @@ def diff(
         else:
             echo(f"Scanning chromosome {chrom} ...")
 
-        # permute data every 2Mbp
-        # store necessary number of permutations for the according chromosome in an array
-        # while scanning the chromosome every 2 Mbp another permutation ("column" of the array) can be used
+        # Permute data every 2Mbp.
+        # Store necessary number of permutations for
+        # the according chromosome length in an array.
+        # While scanning the chromosome every 2 Mbp another permutation
+        # ("column" of the array) can be used.
         n_perm = chrom_len // 2000000 + 1
-        indices = np.empty([2, n_perm + 1, len(celltypes)], dtype=bool)
-        # first "column" holds the real indices of both cell types
-        indices[0][0] = index_realg1
-        indices[1][0] = index_realg2
+        perm_idx = np.empty([2, n_perm + 1, len(celltypes)], dtype=bool)
+        # first "column" holds the real perm_idx of both cell types
+        perm_idx[0][0] = index_realg1
+        perm_idx[1][0] = index_realg2
         for i in range(n_perm):
-            indices[0][i + 1], indices[1][i + 1] = permuted_indices(
+            perm_idx[0][i + 1], perm_idx[1][i + 1] = permuted_indices(
                 idx_celltypes, celltype_1, celltype_2, total_cells
             )
 
@@ -363,19 +326,23 @@ def diff(
                 smoothed_cpg_vals,
                 n_cells,
                 chrom_len,
-                indices,
+                perm_idx,
                 min_cells,
                 datatype,
             )
 
-            # calculate t-statistic for group1 (low t-values) and group 2 (high t-values)
+            # calculate t-statistic for group1 (low t-values)
+            # and group 2 (high t-values)
             # to make this possible the t-stat was multiplied by -1 for group1
             window_tstat_groups = [window_tstat * -1, window_tstat]
 
-            # this is the first=biggest chrom, so let's find our t-statistic threshold here
-            # the t-statistic threshold will be determined based on the largest chromosome.
-            # by default, we take the 98th percentile of all window t-statistics.
-            # thresholds for real indices are stored in the first and for permuted indices in the second array
+            # This is the first=biggest chrom,
+            # so let's find our t-statistic threshold here.
+            # The t-statistic threshold will be determined
+            # based on the largest chromosome.
+            # By default, we take the 98th percentile of all window t-statistics.
+            # Thresholds for real indices are stored in the first
+            # and for permuted indices in the second array.
             iteration = 0
             if threshold_values[1, 1] == 0:
                 for tstat_windows, cell in zip(window_tstat_groups, cells):
@@ -384,7 +351,8 @@ def diff(
                             tstat_windows, 1 - threshold
                         )
                         echo(
-                            f"Determined threshold of {threshold_values[0,iteration]} for {cell} of {datatype} data."
+                            f"Determined threshold of {threshold_values[0,iteration]} "
+                            f"for {cell} of {datatype} data."
                         )
                     if datatype == "permuted":
                         threshold_values[1, iteration] = np.nanquantile(
@@ -393,7 +361,9 @@ def diff(
 
                         if debug:
                             echo(
-                                f"Determined threshold of {threshold_values[1,iteration]} for {cell} of {datatype} data."
+                                f"Determined threshold of "
+                                f"{threshold_values[1,iteration]} "
+                                f"for {cell} of {datatype} data."
                             )
                     iteration += 1
 
@@ -415,7 +385,7 @@ def diff(
                 smoothed_cpg_vals,
                 n_cells,
                 chrom_len,
-                indices,
+                perm_idx,
                 min_cells,
                 threshold_datatype,
                 window_tstat_groups,
@@ -457,11 +427,14 @@ def diff(
             output_final[column] = output_final[column][filter_datatype]
         del output_final[4]
 
+        differential = np.count_nonzero(output_final[5] < 0.05)
+        echo(f"found {differential} significant differentially methylated regions.")
+
     np.savetxt(output, np.transpose(output_final), delimiter="\t", fmt="%s")
 
     """
     # only important if there is two output files
-    # generate list of arrays according to selected celltypes 
+    # generate list of arrays according to selected celltypes
     # and remove array with celltypes
     # save both outputs
     # if datatype array is removed again change index from 5 to 4
@@ -472,9 +445,6 @@ def diff(
         for column in range(len(output_final)):
             output_cell.append(output_final[column][filter_cells])
         del output_cell[5]
-
-        differential = np.count_nonzero(output_cell[5] < 0.05)
-        echo(f"found {differential} significant differentially methylated regions for {cell}.")
 
         np.savetxt(output, np.transpose(output_cell), delimiter = "\t", fmt = '%s')
     """
