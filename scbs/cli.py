@@ -379,7 +379,7 @@ def scan_cli(**kwargs):
 )
 @click.option(
     "--stepsize",
-    default=10,
+    default=1000,
     type=click.IntRange(min=1, max=1e6),
     metavar="INTEGER",
     show_default=True,
@@ -407,6 +407,11 @@ def scan_cli(**kwargs):
     default=-1,
     help="How many CPU threads to use in parallel.  [default: all available]",
     callback=_set_n_threads,
+)
+@click.option(
+    "--debug",
+    is_flag=True,
+    help="Use to print thresholds for permuted data and keep permuted data in output file",
 )
 def diff_cli(**kwargs):
     from .diff import diff

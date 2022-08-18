@@ -30,6 +30,8 @@ def _output_file_handle(raw_path):
 
 def permuted_indices(idx_celltypes, celltype_1, celltype_2, total_cells):
     permutation = np.random.permutation(idx_celltypes)
+    while (permutation == idx_celltypes).all():
+        permutation = np.random.permutation(idx_celltypes)
 
     index_g1 = np.zeros(total_cells, dtype=bool)
     index_g2 = np.zeros(total_cells, dtype=bool)
@@ -269,7 +271,16 @@ def calc_tstat_peaks(
 
 
 def diff(
-    data_dir, cell_file, output, bandwidth, stepsize, threshold, min_cells, threads=-1, debug=False):
+    data_dir,
+    cell_file,
+    output,
+    bandwidth,
+    stepsize,
+    threshold,
+    min_cells,
+    threads=-1,
+    debug=False,
+):
     celltypes = np.loadtxt(cell_file, dtype=str)
     cells = []
 
