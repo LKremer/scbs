@@ -1,0 +1,24 @@
+This directory was generated
+on Tue Aug 16 14:41:08 2022
+with scbs prepare version 0.3.2
+with the following parameters:
+
+input_files
+<_io.BufferedReader name='intersected/AS-485322-LR-51079_intersected.cov'>
+<_io.BufferedReader name='intersected/AS-485338-LR-51079_intersected.cov'>
+<_io.BufferedReader name='intersected/AS-485404-LR-51079_intersected.cov'>
+<_io.BufferedReader name='intersected/AS-485410-LR-51079_intersected.cov'>
+<_io.BufferedReader name='intersected/AS-485412-LR-51079_intersected.cov'>
+<_io.BufferedReader name='intersected/AS-485414-LR-51079_intersected.cov'>
+<_io.BufferedReader name='intersected/AS-485486-LR-51078_intersected.cov'>
+<_io.BufferedReader name='intersected/AS-485488-LR-51078_intersected.cov'>
+<_io.BufferedReader name='intersected/AS-485506-LR-51078_intersected.cov'>
+<_io.BufferedReader name='intersected/AS-485512-LR-51078_intersected.cov'>
+<_io.BufferedReader name='intersected/AS-539084-LR-53397_intersected.cov'>
+<_io.BufferedReader name='intersected/AS-558387-LR-56166_AS-558580-LR-56167_intersected.cov'>
+
+data_dir
+compact_data
+
+input_format
+bismark
