@@ -300,7 +300,6 @@ def smooth_cli(**kwargs):
     {style("DATA_DIR", fg="green")} is the directory containing the methylation
     matrices produced by running 'scbs prepare', as well as the smoothed methylation
     values produced by running 'scbs smooth'.
-
     {style("OUTPUT", fg="green")} is the path of the output file in '.bed' format,
     containing the VMRs that were found.
     """,
@@ -353,6 +352,86 @@ def scan_cli(**kwargs):
     timer = Timer(label="scan")
     _print_kwargs(kwargs)
     scan(**kwargs)
+    timer.stop()
+
+
+# diff command
+@cli.command(
+    name="diff",
+    help=f"""
+    Scans the whole genome for regions of differential methylation
+    between two cell types. This works by sliding a window across the genome,
+    calculating the t-statistic of methylation per window,
+    and selecting windows above a t-statistic threshold.
+
+    {style("DATA_DIR", fg="green")} is the directory containing the methylation
+    matrices produced by running 'scbs prepare', as well as the smoothed methylation
+    values produced by running 'scbs smooth'.
+
+    {style("OUTPUT", fg="green")} is the path of the output file in '.bed' format,
+    containing the differentially methylated regions, t-statistic, cell type,
+    and adjusted p-value that were found.
+    """,
+    short_help="Scan the genome to discover regions with differential methylation",
+    no_args_is_help=True,
+)
+@click.argument(
+    "data-dir",
+    type=click.Path(exists=True, dir_okay=True, file_okay=False, readable=True),
+)
+@click.argument("cell_file", type=click.File("r"))
+@click.argument("output", type=click.File("w"))
+@click.option(
+    "-bw",
+    "--bandwidth",
+    default=2000,
+    type=click.IntRange(min=1, max=1e6),
+    metavar="INTEGER",
+    show_default=True,
+    help="Bandwidth of the windows in basepairs.",
+)
+@click.option(
+    "--stepsize",
+    default=1000,
+    type=click.IntRange(min=1, max=1e6),
+    metavar="INTEGER",
+    show_default=True,
+    help="Step size of the windows in basepairs.",
+)
+@click.option(
+    "--threshold",
+    default=0.02,
+    show_default=True,
+    type=click.FloatRange(min=0, max=1),
+    metavar="FLOAT",
+    help="The t-statistic threshold, i.e. 0.02 means that the top 2% "
+    "most extreme genomic bins will be reported. Overlapping bins "
+    "are merged.",
+)
+@click.option(
+    "--min-cells",
+    default=6,
+    type=click.IntRange(min=1, max=1e6),
+    metavar="INTEGER",
+    show_default=True,
+)
+@click.option(
+    "--threads",
+    default=-1,
+    help="How many CPU threads to use in parallel.  [default: all available]",
+    callback=_set_n_threads,
+)
+@click.option(
+    "--debug",
+    is_flag=True,
+    help="Use to print thresholds for permuted data and keep it in output file",
+)
+def diff_cli(**kwargs):
+    from .diff import diff
+
+    timer = Timer(label="diff")
+    _print_kwargs(kwargs)
+    diff(**kwargs)
     timer.stop()
 
 
