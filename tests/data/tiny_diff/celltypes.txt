@@ -8,5 +8,5 @@ oligodendrocyte
 oligodendrocyte
 neuroblast
 oligodendrocyte
-nan
-nan
+-
+-

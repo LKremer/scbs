@@ -270,7 +270,7 @@ def filter_cli(**kwargs):
     "-bw",
     "--bandwidth",
     default=1000,
-    type=click.IntRange(min=1, max=1e6),
+    type=click.IntRange(min=1),
     metavar="INTEGER",
     show_default=True,
     help="Smoothing bandwidth in basepairs.",
@@ -300,6 +300,7 @@ def smooth_cli(**kwargs):
     {style("DATA_DIR", fg="green")} is the directory containing the methylation
     matrices produced by running 'scbs prepare', as well as the smoothed methylation
     values produced by running 'scbs smooth'.
+
     {style("OUTPUT", fg="green")} is the path of the output file in '.bed' format,
     containing the VMRs that were found.
     """,
@@ -315,19 +316,19 @@ def smooth_cli(**kwargs):
     "-bw",
     "--bandwidth",
     default=2000,
-    type=click.IntRange(min=1, max=1e6),
+    type=click.IntRange(min=1),
     metavar="INTEGER",
     show_default=True,
-    help="Bandwidth of the variance windows in basepairs. Increase this "
+    help="Bandwidth of the sliding window in basepairs. Increase this "
     "value to find larger VMRs.",
 )
 @click.option(
     "--stepsize",
     default=10,
-    type=click.IntRange(min=1, max=1e6),
+    type=click.IntRange(min=1),
     metavar="INTEGER",
     show_default=True,
-    help="Step size of the variance windows in basepairs. Increase "
+    help="Step size of the sliding window in basepairs. Increase "
     "this value to gain speed, at the cost of some accuracy.",
 )
 @click.option(
@@ -359,44 +360,53 @@ def scan_cli(**kwargs):
 @cli.command(
     name="diff",
     help=f"""
-    Scans the whole genome for regions of differential methylation
-    between two cell types. This works by sliding a window across the genome,
-    calculating the t-statistic of methylation per window,
-    and selecting windows above a t-statistic threshold.
+    Scans the whole genome for differentially methylated regions (DMRs)
+    between two groups of cells. This works by sliding a window across the genome,
+    performing a t-test for each window, and merging windows above a threshold.
+    To control the false discovery rate, the same procedure is repeated on permutations
+    of the data which are then used to calculate an adjusted p-value for each DMR.
 
     {style("DATA_DIR", fg="green")} is the directory containing the methylation
     matrices produced by running 'scbs prepare', as well as the smoothed methylation
     values produced by running 'scbs smooth'.
 
+    {style("CELL_GROUPS", fg="green")} is a text file that lists the group membership
+    (e.g. cell type or treatment) of each cell. Each row contains one of two group
+    labels such as 'treated' and 'untreated' or 'neuron' and 'glia'. Cells that do not
+    belong to either of the two groups are labeled '-' (dash character). The order of
+    cells is specified in {style("DATA_DIR/column_header.txt", fg="green")}.
+
     {style("OUTPUT", fg="green")} is the path of the output file in '.bed' format,
-    containing the differentially methylated regions, t-statistic, cell type,
-    and adjusted p-value that were found.
+    containing the DMR genome coordinates, their t-statistic, the cell group in which
+    the DMR has lower methylation, and the adjusted p-value.
     """,
-    short_help="Scan the genome to discover regions with differential methylation",
+    short_help="Discover differentially methylated regions between groups of cells",
     no_args_is_help=True,
 )
 @click.argument(
     "data-dir",
     type=click.Path(exists=True, dir_okay=True, file_okay=False, readable=True),
 )
-@click.argument("cell_file", type=click.File("r"))
+@click.argument("cell_groups", type=click.File("r"))
 @click.argument("output", type=click.File("w"))
 @click.option(
     "-bw",
     "--bandwidth",
     default=2000,
-    type=click.IntRange(min=1, max=1e6),
+    type=click.IntRange(min=1),
     metavar="INTEGER",
     show_default=True,
-    help="Bandwidth of the windows in basepairs.",
+    help="Bandwidth of the sliding window in basepairs. Increase this "
+    "value to find larger DMRs.",
 )
 @click.option(
     "--stepsize",
     default=1000,
-    type=click.IntRange(min=1, max=1e6),
+    type=click.IntRange(min=1),
     metavar="INTEGER",
     show_default=True,
-    help="Step size of the windows in basepairs.",
+    help="Step size of the sliding window in basepairs. Increase "
+    "this value to gain speed, at the cost of some accuracy.",
 )
 @click.option(
     "--threshold",
@@ -405,15 +415,18 @@ def scan_cli(**kwargs):
     type=click.FloatRange(min=0, max=1),
     metavar="FLOAT",
     help="The t-statistic threshold, i.e. 0.02 means that the top 2% "
-    "most extreme genomic bins will be reported. Overlapping bins "
-    "are merged.",
+    "most differentially methylated genomic bins will be reported. "
+    "Overlapping bins are merged.",
 )
 @click.option(
     "--min-cells",
     default=6,
-    type=click.IntRange(min=1, max=1e6),
+    type=click.IntRange(min=1),
     metavar="INTEGER",
     show_default=True,
+    help="The minimum number of cells required to consider a genomic region for "
+    "testing. For example, a value of 6 means that only regions with sequencing "
+    "coverage in at least 6 cells per group are considered.",
 )
 @click.option(
     "--threads",
@@ -424,7 +437,7 @@ def scan_cli(**kwargs):
 @click.option(
     "--debug",
     is_flag=True,
-    help="Use to print thresholds for permuted data and keep it in output file",
+    help="Use this to to also report DMRs that were identified in permutations.",
 )
 def diff_cli(**kwargs):
     from .diff import diff
@@ -509,7 +522,7 @@ def matrix_cli(**kwargs):
     "--width",
     default=4000,
     show_default=True,
-    type=click.IntRange(min=1, max=None),
+    type=click.IntRange(min=1),
     metavar="INTEGER",
     help="The total width of the profile plot in bp. "
     "The center of all bed regions will be "
@@ -519,7 +532,7 @@ def matrix_cli(**kwargs):
 )
 @click.option(
     "--strand-column",
-    type=click.IntRange(min=1, max=None),
+    type=click.IntRange(min=1),
     metavar="INTEGER",
     help="The bed column number (1-indexed) denoting "
     "the DNA strand of the region  [optional].",

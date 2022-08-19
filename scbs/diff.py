@@ -7,9 +7,9 @@ import numpy as np
 from numba import njit, prange
 
 from .numerics import _calc_mean_shrunken_residuals
+from .scbs import _find_peaks
 from .smooth import _load_smoothed_chrom
 from .utils import _check_data_dir, _load_chrom_mat, echo
-from .scbs import _find_peaks
 
 # ignore division by 0 and division by NaN error
 np.seterr(divide="ignore", invalid="ignore")
@@ -233,7 +233,7 @@ def calc_tstat_peaks(
 
 def diff(
     data_dir,
-    cell_file,
+    cell_groups,
     output,
     bandwidth,
     stepsize,
@@ -242,11 +242,11 @@ def diff(
     threads=-1,
     debug=False,
 ):
-    celltypes = np.loadtxt(cell_file, dtype=str)
+    celltypes = np.loadtxt(cell_groups, dtype=str)
     cells = []
 
     for i in range(len(celltypes)):
-        if str(celltypes[i]) != "nan":
+        if str(celltypes[i]) != "-":
             cells.append(celltypes[i])
 
     # which cell types are present in the input file (defines the two groups)

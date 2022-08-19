@@ -3,7 +3,7 @@
 Usage: scbs [OPTIONS] COMMAND [ARGS]...
 
               |
-  ,---. ,---. |---. ,---. version 0.3.4
+  ,---. ,---. |---. ,---. version 0.4.0
   `---. |     |   | `---.
   `---' `---' `---' `---'
 
@@ -155,6 +155,54 @@ Options:
   --threads INTEGER         How many CPU threads to use in parallel.
                             [default: all available]
   --help                    Show this message and exit.
+```
+# diff
+```
+Usage: scbs diff [OPTIONS] DATA_DIR CELL_GROUPS OUTPUT
+
+  Scans the whole genome for differentially methylated regions (DMRs) between
+  two groups of cells. This works by sliding a window across the genome,
+  performing a t-test for each window, and merging windows above a threshold.
+  To control the false discovery rate, the same procedure is repeated on
+  permutations of the data which are then used to calculate an adjusted
+  p-value for each DMR.
+
+  DATA_DIR is the directory containing the methylation matrices
+  produced by running 'scbs prepare', as well as the smoothed methylation
+  values produced by running 'scbs smooth'.
+
+  CELL_GROUPS is a text file that lists the group membership (e.g.
+  cell type or treatment) of each cell. Each row contains one of two group
+  labels such as 'treated' and 'untreated' or 'neuron' and 'glia'. Cells that
+  do not belong to either of the two groups are labeled '-' (dash character).
+  The order of cells is specified in DATA_DIR/column_header.txt.
+
+  OUTPUT is the path of the output file in '.bed' format, containing
+  the DMR genome coordinates, their t-statistic, the cell group in which the
+  DMR has lower methylation, and the adjusted p-value.
+
+Options:
+  -bw, --bandwidth INTEGER  Bandwidth of the sliding window in basepairs.
+                            Increase this value to find larger DMRs.
+                            [default: 2000; x>=1]
+  --stepsize INTEGER        Step size of the sliding window in basepairs.
+                            Increase this value to gain speed, at the cost of
+                            some accuracy.  [default: 1000; x>=1]
+  --threshold FLOAT         The t-statistic threshold, i.e. 0.02 means that
+                            the top 2% most differentially methylated genomic
+                            bins will be reported. Overlapping bins are
+                            merged.  [default: 0.02; 0<=x<=1]
+  --min-cells INTEGER       The minimum number of cells required to consider a
+                            genomic region for testing. For example, a value
+                            of 6 means that only regions with sequencing
+                            coverage in at least 6 cells per group are
+                            considered.  [default: 6; x>=1]
+  --threads INTEGER         How many CPU threads to use in parallel.
+                            [default: all available]
+  --debug                   Use this to to also report DMRs that were
+                            identified in permutations.
+  --help                    Show this message and exit.
+
 ```
 # matrix
 ```

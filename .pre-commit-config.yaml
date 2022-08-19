@@ -22,12 +22,3 @@ repos:
     hooks:
       - id: flake8
         exclude: "benchmarks"
-
-  - repo: local
-    hooks:
-      - id: pytest
-        name: pytest
-        entry: poetry run pytest
-        pass_filenames: false
-        language: system
-        types: [python]
