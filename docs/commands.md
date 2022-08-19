@@ -23,7 +23,8 @@ Commands:
   prepare  Collect and store sc-methylation data for quick access
   filter   Filter low-quality cells based on coverage and mean methylation
   smooth   Smooth the pseudobulk of single cell methylation data
-  scan     Scan the genome to discover regions with variable methylation
+  scan     Scan the genome to discover variably methylated regions
+  diff     Discover differentially methylated regions between groups of cells
   matrix   Make a methylation matrix, similar to a count matrix in scRNA-seq
   profile  Plot mean methylation around a group of genomic features
 ```
@@ -123,7 +124,7 @@ Usage: scbs smooth [OPTIONS] DATA_DIR
 
 Options:
   -bw, --bandwidth INTEGER  Smoothing bandwidth in basepairs.  [default: 1000;
-                            1<=x<=1000000.0]
+                            x>=1]
   --use-weights             Use this to weigh each methylation site by
                             log1p(coverage).
   --help                    Show this message and exit.
@@ -145,9 +146,9 @@ Usage: scbs scan [OPTIONS] DATA_DIR OUTPUT
 
 Options:
   -bw, --bandwidth INTEGER  Bandwidth of the variance windows in basepairs.
-                            [default: 2000; 1<=x<=1000000.0]
+                            [default: 2000; x>=1]
   --stepsize INTEGER        Step size of the variance windows in basepairs.
-                            [default: 10; 1<=x<=1000000.0]
+                            [default: 10; x>=1]
   --var-threshold FLOAT     The variance threshold, i.e. 0.02 means that the
                             top 2% most variable genomic bins will be
                             reported. Overlapping variable bins are merged.
