@@ -464,9 +464,8 @@ def diff_cli(**kwargs):
     matrices produced by running 'scbs prepare', as well as the smoothed methylation
     values produced by running 'scbs smooth'.
 
-    {style("OUTPUT", fg="green")} is the file path where the count table will be
-    written. Should end with '.csv'. The table is in long format and missing values
-    are omitted.
+    {style("OUTPUT", fg="green")} is the output directory where the count tables will
+    be written.
     """,
     short_help="Make a methylation matrix, similar to a count matrix in scRNA-seq",
     no_args_is_help=True,
@@ -476,11 +475,12 @@ def diff_cli(**kwargs):
     "data-dir",
     type=click.Path(exists=True, dir_okay=True, file_okay=False, readable=True),
 )
-@click.argument("output", type=click.File("w"))
+@click.argument("output", type=click.Path(file_okay=False, writable=True))
 @click.option(
-    "--keep-other-columns",
-    is_flag=True,
-    help="Use this to keep any other columns that the input bed-file may contain.",
+    "--threads",
+    default=-1,
+    help="How many CPU threads to use in parallel.  [default: all available]",
+    callback=_set_n_threads,
 )
 def matrix_cli(**kwargs):
     from .matrix import matrix

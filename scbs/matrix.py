@@ -1,4 +1,8 @@
+import numba
+import os
 import numpy as np
+
+from numba import njit, prange
 
 from .numerics import _calc_mean_shrunken_residuals, _calc_region_stats
 from .smooth import _load_smoothed_chrom
@@ -12,25 +16,86 @@ from .utils import (
 )
 
 
+@njit(parallel=True)
+def calc_mean_mfracs(
+    data_chrom,
+    indices_chrom,
+    indptr_chrom,
+    starts,
+    ends,
+    chrom_len,
+    n_cells,
+    smoothed_vals,
+):
+    n_regions = starts.shape[0]
+    ends += 1  # include right boundary
+
+    # outputs
+    n_meth = np.zeros((n_cells, n_regions), dtype=np.int32)
+    n_total = np.zeros((n_cells, n_regions), dtype=np.int32)
+    smooth_sums = np.full((n_cells, n_regions), np.nan, dtype=np.float32)
+
+    # 500 regions per thread. it's probably smarter to have one thread per chromosome
+    chunk_size = 500
+    chunks = np.arange(0, n_regions, chunk_size)
+    for chunk_i in prange(chunks.shape[0]):
+        chunk_start = chunks[chunk_i]
+        chunk_end = chunk_start + chunk_size
+        if chunk_end > n_regions:
+            chunk_end = n_regions
+
+        for region_i in range(chunk_start, chunk_end):
+            start = starts[region_i]
+            if start > chrom_len:
+                continue  # region is outside of chrom -> ignore
+            end = ends[region_i]
+            if end > chrom_len:
+                end = chrom_len  # region is partially outside of chrom -> truncate
+            # slice the methylation values so that we only keep the values in the window
+            data = data_chrom[indptr_chrom[start] : indptr_chrom[end]]
+            if data.size > 0:
+                # slice indices
+                indices = indices_chrom[indptr_chrom[start] : indptr_chrom[end]]
+                # slice index pointer
+                indptr = indptr_chrom[start : end + 1] - indptr_chrom[start]
+                indptr_diff = np.diff(indptr)
+                cpg_idx = 0
+                nobs_cpg = indptr_diff[cpg_idx]
+                # nobs_cpg: how many of the next values correspond to the same CpG
+                # e.g. a value of 3 means that the next 3 values are of the same CpG
+                for i in range(data.shape[0]):
+                    while nobs_cpg == 0:
+                        cpg_idx += 1
+                        nobs_cpg = indptr_diff[cpg_idx]
+                    nobs_cpg -= 1
+                    cell_i = indices[i]
+                    meth_value = data[i]
+                    n_total[cell_i, region_i] += 1
+                    if np.isnan(smooth_sums[cell_i, region_i]):
+                        smooth_sums[cell_i, region_i] = 0.0
+                    if meth_value == -1:
+                        smooth_sums[cell_i, region_i] -= smoothed_vals[start + cpg_idx]
+                        continue
+                    else:
+                        smooth_sums[cell_i, region_i] += (
+                            1 - smoothed_vals[start + cpg_idx]
+                        )
+                    n_meth[cell_i, region_i] += meth_value
+    mean_shrunk_res = smooth_sums / (n_total + 1)
+    return n_meth, n_total, mean_shrunk_res
+
+
 def matrix(
     data_dir,
     regions,
     output,
-    keep_other_columns=False,
+    threads
 ):
+    os.makedirs(output, exist_ok=True)
     _check_data_dir(data_dir, assert_smoothed=True)
-    output_header = [
-        "chromosome",
-        "start",
-        "end",
-        "n_sites",
-        "n_cells",
-        "cell_name",
-        "n_meth",
-        "n_obs",
-        "meth_frac",
-        "shrunken_residual",
-    ]
+    if threads != -1:
+        numba.set_num_threads(threads)
+    n_threads = numba.get_num_threads()
     cell_names = _parse_cell_names(data_dir)
     n_regions = 0  # count the total number of valid regions in the bed file
     n_empty_regions = 0  # count the number of regions that don't overlap a CpG
@@ -38,13 +103,17 @@ def matrix(
     unknown_chroms = set()
     prev_chrom = None
 
-    for bed_entries in _iter_bed(regions, keep_cols=keep_other_columns):
-        chrom, start, end, _, other_columns = bed_entries
-        if prev_chrom is None:
-            # only happens once on the very first bed entry: write header
-            if other_columns and keep_other_columns:
-                output_header += [f"bed_col{i + 4}" for i in range(len(other_columns))]
-            output.write(",".join(output_header) + "\n")
+    """
+    output matrix of each chromosome will be collected here and merged later
+    actually this is a little inefficient, we could just populate one big matrix
+    instead of merging the chromosome matrices.
+    """
+    meth = []
+    total = []
+    msr = []  # mean shrunken residuals
+
+    for bed_entries in _iter_bed(regions):
+        chrom, start, end, *others = bed_entries
         if chrom in unknown_chroms:
             continue
         if chrom != prev_chrom:
@@ -64,54 +133,31 @@ def matrix(
                 echo(f"extracting methylation for regions on chromosome {chrom} ...")
                 smoothed_vals = _load_smoothed_chrom(data_dir, chrom)
                 chrom_len, n_cells = mat.shape
+                if prev_chrom is not None:
+                    meth_chrom, total_chrom, msr_chrom = calc_mean_mfracs(
+                        mat.data,
+                        mat.indices,
+                        mat.indptr,
+                        np.asarray(starts, dtype=np.int32),
+                        np.asarray(ends, dtype=np.int32),
+                        chrom_len,
+                        n_cells,
+                        smoothed_vals,
+                    )
+                    meth.append(meth_chrom)
+                    total.append(total_chrom)
+                    msr.append(msr_chrom)
                 observed_chroms.add(chrom)
+                starts, ends = [], []
                 prev_chrom = chrom
-        # calculate methylation fraction, shrunken residuals etc. for the region:
-        n_regions += 1
-        n_meth, n_total, mfracs, n_obs_cpgs = _calc_region_stats(
-            mat.data, mat.indices, mat.indptr, start, end, n_cells, chrom_len
-        )
-        nz_cells = np.nonzero(n_total > 0)[0]  # index of cells that observed the region
-        n_obs_cells = nz_cells.shape[0]  # in how many cells we observed the region
-        if nz_cells.size == 0:
-            # skip regions that were not observed in any cell
-            n_empty_regions += 1
-            continue
-        resid_shrunk = _calc_mean_shrunken_residuals(
-            mat.data,
-            mat.indices,
-            mat.indptr,
-            start,
-            end,
-            smoothed_vals,
-            n_cells,
-            chrom_len,
-        )
-        # write "count" table
-        for c in nz_cells:
-            out_vals = [
-                chrom,
-                start,
-                end,
-                n_obs_cpgs,
-                n_obs_cells,
-                cell_names[c],
-                n_meth[c],
-                n_total[c],
-                mfracs[c],
-                resid_shrunk[c],
-            ]
-            if keep_other_columns and other_columns:
-                out_vals += other_columns
-            output.write(",".join(str(v) for v in out_vals) + "\n")
+        starts.append(start)
+        ends.append(end)
 
-    if n_regions == 0:
-        raise Exception("bed file contains no regions.")
-    echo(f"Profiled {n_regions} regions.\n")
-    if (n_empty_regions / n_regions) > 0.5:
-        secho("Warning - most regions have no coverage in any cell:", fg="red")
-    echo(
-        f"{n_empty_regions} regions ({n_empty_regions/n_regions:.2%}) "
-        f"contained no covered methylation site."
-    )
-    return
+    echo(f"Writing matrices to {output} ...")
+    meth = np.hstack(meth)
+    total = np.hstack(total)
+    msr = np.hstack(msr)
+    np.savetxt(os.path.join(output, "methylated_sites.csv.gz"), meth, delimiter=",", fmt="%d")
+    np.savetxt(os.path.join(output, "total_sites.csv.gz"), total, delimiter=",", fmt="%d")
+    np.savetxt(os.path.join(output, "methylation_fractions.csv.gz"), np.divide(meth, total), delimiter=",", fmt="%-.5f")
+    np.savetxt(os.path.join(output, "mean_shrunken_residuals.csv.gz"), msr, delimiter=",", fmt="%-.5f")
