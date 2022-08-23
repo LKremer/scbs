@@ -1,10 +1,10 @@
 import numba
 import os
 import numpy as np
+import pandas as pd
 
 from numba import njit, prange
 
-from .numerics import _calc_mean_shrunken_residuals, _calc_region_stats
 from .smooth import _load_smoothed_chrom
 from .utils import (
     _check_data_dir,
@@ -12,12 +12,11 @@ from .utils import (
     _load_chrom_mat,
     _parse_cell_names,
     echo,
-    secho,
 )
 
 
 @njit(parallel=True)
-def calc_mean_mfracs(
+def _calc_mean_mfracs(
     data_chrom,
     indices_chrom,
     indptr_chrom,
@@ -85,24 +84,27 @@ def calc_mean_mfracs(
     return n_meth, n_total, mean_shrunk_res
 
 
-def matrix(
-    data_dir,
-    regions,
-    output,
-    threads
-):
-    os.makedirs(output, exist_ok=True)
+def _write_mtx(mtx_list, row_names, col_names, out_dir, fname):
+    """
+    take a list of matrices (one per chrom), merge them, and write the matrix to csv.gz.
+    """
+    out_path = os.path.join(out_dir, fname)
+    echo(f"Writing {out_path} ...")
+    df = pd.DataFrame(
+        data=np.hstack(mtx_list),
+        index=row_names,
+        columns=col_names,
+    )
+    df.to_csv(out_path)
+
+
+def matrix(data_dir, regions, output_dir, threads):
+    os.makedirs(output_dir, exist_ok=True)
     _check_data_dir(data_dir, assert_smoothed=True)
     if threads != -1:
         numba.set_num_threads(threads)
-    n_threads = numba.get_num_threads()
     cell_names = _parse_cell_names(data_dir)
-    n_regions = 0  # count the total number of valid regions in the bed file
-    n_empty_regions = 0  # count the number of regions that don't overlap a CpG
-    observed_chroms = set()
-    unknown_chroms = set()
-    prev_chrom = None
-
+    region_names = []
     """
     output matrix of each chromosome will be collected here and merged later
     actually this is a little inefficient, we could just populate one big matrix
@@ -112,52 +114,48 @@ def matrix(
     total = []
     msr = []  # mean shrunken residuals
 
+    start_dict = {}  # region coordinates for each chromosome
+    end_dict = {}
     for bed_entries in _iter_bed(regions):
         chrom, start, end, *others = bed_entries
-        if chrom in unknown_chroms:
-            continue
-        if chrom != prev_chrom:
-            # we reached a new chrom, load the next matrix
-            if chrom in observed_chroms:
-                raise Exception(
-                    f"{regions} is not sorted alphabetically! "
-                    "Please use 'bedtools sort'"
-                )
-            mat = _load_chrom_mat(data_dir, chrom)
-            if mat is None:
-                unknown_chroms.add(chrom)
-                observed_chroms.add(chrom)
-                prev_chrom = chrom
-                continue  # skip this region
-            else:
-                echo(f"extracting methylation for regions on chromosome {chrom} ...")
-                smoothed_vals = _load_smoothed_chrom(data_dir, chrom)
-                chrom_len, n_cells = mat.shape
-                if prev_chrom is not None:
-                    meth_chrom, total_chrom, msr_chrom = calc_mean_mfracs(
-                        mat.data,
-                        mat.indices,
-                        mat.indptr,
-                        np.asarray(starts, dtype=np.int32),
-                        np.asarray(ends, dtype=np.int32),
-                        chrom_len,
-                        n_cells,
-                        smoothed_vals,
-                    )
-                    meth.append(meth_chrom)
-                    total.append(total_chrom)
-                    msr.append(msr_chrom)
-                observed_chroms.add(chrom)
-                starts, ends = [], []
-                prev_chrom = chrom
-        starts.append(start)
-        ends.append(end)
+        if chrom not in start_dict:
+            start_dict[chrom] = []
+            end_dict[chrom] = []
+        start_dict[chrom].append(start)
+        end_dict[chrom].append(end)
 
-    echo(f"Writing matrices to {output} ...")
-    meth = np.hstack(meth)
-    total = np.hstack(total)
-    msr = np.hstack(msr)
-    np.savetxt(os.path.join(output, "methylated_sites.csv.gz"), meth, delimiter=",", fmt="%d")
-    np.savetxt(os.path.join(output, "total_sites.csv.gz"), total, delimiter=",", fmt="%d")
-    np.savetxt(os.path.join(output, "methylation_fractions.csv.gz"), np.divide(meth, total), delimiter=",", fmt="%-.5f")
-    np.savetxt(os.path.join(output, "mean_shrunken_residuals.csv.gz"), msr, delimiter=",", fmt="%-.5f")
+    for chrom in sorted(start_dict.keys()):
+        mat = _load_chrom_mat(data_dir, chrom)
+        if mat is None:
+            continue
+        starts = start_dict[chrom]
+        ends = end_dict[chrom]
+        echo(f"extracting methylation for regions on chromosome {chrom} ...")
+        chrom_len, n_cells = mat.shape
+        smoothed_vals = _load_smoothed_chrom(data_dir, chrom)
+        meth_chrom, total_chrom, msr_chrom = _calc_mean_mfracs(
+            mat.data,
+            mat.indices,
+            mat.indptr,
+            np.asarray(starts, dtype=np.int32),
+            np.asarray(ends, dtype=np.int32),
+            chrom_len,
+            n_cells,
+            smoothed_vals,
+        )
+        meth.append(meth_chrom)
+        total.append(total_chrom)
+        msr.append(msr_chrom)
+        for start, end in zip(starts, ends):
+            region_names.append(f"{chrom}:{start}-{end}")
+
+    echo(f"Writing matrices to {output_dir} ...")
+    _write_mtx(meth, cell_names, region_names, output_dir, "methylated_sites.csv.gz")
+    _write_mtx(total, cell_names, region_names, output_dir, "total_sites.csv.gz")
+    mfracs = [np.divide(m, t) for m, t in zip(meth, total)]
+    _write_mtx(
+        mfracs, cell_names, region_names, output_dir, "methylation_fractions.csv.gz"
+    )
+    _write_mtx(
+        msr, cell_names, region_names, output_dir, "mean_shrunken_residuals.csv.gz"
+    )

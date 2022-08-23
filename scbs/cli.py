@@ -457,15 +457,20 @@ def diff_cli(**kwargs):
     for dimensionality reduction or clustering, analogous to a count matrix in
     scRNA-seq.
 
-    {style("REGIONS", fg="green")} is an alphabetically sorted (!) .bed file of regions
-    for which methylation will be quantified in every cell.
+    {style("REGIONS", fg="green")} is a .bed file of regions for which methylation
+    will be quantified in every cell.
 
     {style("DATA_DIR", fg="green")} is the directory containing the methylation
     matrices produced by running 'scbs prepare', as well as the smoothed methylation
     values produced by running 'scbs smooth'.
 
-    {style("OUTPUT", fg="green")} is the output directory where the count tables will
-    be written.
+    \b
+    {style("OUTPUT_DIR", fg="green")} is the output directory.
+    It will contain four cell × region matrices ("count tables"):
+    methylated_sites.csv.gz - the number of sites that were methylated
+    total_sites.csv.gz - the total number of observed sites (sites with read coverage)
+    methylation_fractions.csv.gz - the fraction of methylated sites (methylated / total)
+    mean_shrunken_residuals.csv.gz - the mean shrunken residuals, a measure of methylation
     """,
     short_help="Make a methylation matrix, similar to a count matrix in scRNA-seq",
     no_args_is_help=True,
@@ -475,7 +480,7 @@ def diff_cli(**kwargs):
     "data-dir",
     type=click.Path(exists=True, dir_okay=True, file_okay=False, readable=True),
 )
-@click.argument("output", type=click.Path(file_okay=False, writable=True))
+@click.argument("output_dir", type=click.Path(file_okay=False, writable=True))
 @click.option(
     "--threads",
     default=-1,

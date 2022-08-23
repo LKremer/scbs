@@ -76,24 +76,22 @@ def test_scan_cli():
 
 
 def test_matrix_cli(tmp_path):
-    outfile = os.path.join(tmp_path, "mtx.csv")
     bed = "1\t50\t52\tx\n2\t1000\t1234\ty\n"
     runner = CliRunner()
     result = runner.invoke(
         cli,
         [
             "matrix",
-            "--keep-other-columns",
             "-",
             "tests/data/tiny/data_dir_smooth/",
-            outfile,
+            os.path.join(tmp_path, "mtx"),
         ],
         input=bed,
     )
-    mtx = read_csv(outfile)
+    print(result.output)
     assert result.exit_code == 0, result.output
-    assert mtx["meth_frac"].values.tolist() == [0.5, 0.0, 0.5, 0.5]
-    assert mtx["bed_col4"].values.tolist() == ["x", "x", "y", "y"]
+    mtx = read_csv(os.path.join(tmp_path, "mtx", "methylation_fractions.csv.gz"))
+    assert mtx.values.tolist() == [["a", 0.5, 0.5], ["b", 0.0, 0.5]]
 
 
 def test_profile_cli():
