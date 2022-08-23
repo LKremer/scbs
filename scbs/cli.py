@@ -469,8 +469,10 @@ def diff_cli(**kwargs):
     It will contain four cell × region matrices ("count tables"):
     methylated_sites.csv.gz - the number of sites that were methylated
     total_sites.csv.gz - the total number of observed sites (sites with read coverage)
-    methylation_fractions.csv.gz - the fraction of methylated sites (methylated / total)
-    mean_shrunken_residuals.csv.gz - the mean shrunken residuals, a measure of methylation
+    methylation_fractions.csv.gz - the average methylation, calculated as:
+        # of methylated sites / # of total observed sites
+    mean_shrunken_residuals.csv.gz - the mean shrunken residuals, a more accurate
+        measure of methylation in a genomic region.
     """,
     short_help="Make a methylation matrix, similar to a count matrix in scRNA-seq",
     no_args_is_help=True,

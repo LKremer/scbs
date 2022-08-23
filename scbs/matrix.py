@@ -1,18 +1,12 @@
-import numba
 import os
+
+import numba
 import numpy as np
 import pandas as pd
-
 from numba import njit, prange
 
 from .smooth import _load_smoothed_chrom
-from .utils import (
-    _check_data_dir,
-    _iter_bed,
-    _load_chrom_mat,
-    _parse_cell_names,
-    echo,
-)
+from .utils import _check_data_dir, _iter_bed, _load_chrom_mat, _parse_cell_names, echo
 
 
 @njit(parallel=True)

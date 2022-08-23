@@ -88,10 +88,14 @@ def test_matrix_cli(tmp_path):
         ],
         input=bed,
     )
-    print(result.output)
     assert result.exit_code == 0, result.output
     mtx = read_csv(os.path.join(tmp_path, "mtx", "methylation_fractions.csv.gz"))
     assert mtx.values.tolist() == [["a", 0.5, 0.5], ["b", 0.0, 0.5]]
+    assert os.path.isfile(os.path.join(tmp_path, "mtx", "total_sites.csv.gz"))
+    assert os.path.isfile(os.path.join(tmp_path, "mtx", "methylated_sites.csv.gz"))
+    assert os.path.isfile(
+        os.path.join(tmp_path, "mtx", "mean_shrunken_residuals.csv.gz")
+    )
 
 
 def test_profile_cli():
