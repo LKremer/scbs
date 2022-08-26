@@ -31,7 +31,7 @@ def _iter_bed(file_obj, strand_col_i=None, keep_cols=False):
     if strand_col_i is not None:
         strand_col_i -= 1  # CLI is 1-indexed
     for line in file_obj:
-        if line.startswith("#"):
+        if line.startswith("#") or not line.strip():
             continue  # skip comments
         values = line.strip().split("\t")
         if strand_col_i is not None:
