@@ -177,6 +177,7 @@ def calc_tstat_peaks(
     for tstat_windows, group_name, threshold_value in zip(
         window_tstat_groups, group_names, threshold_datatype
     ):
+
         # merge overlapping windows with lowest and highest t-statistic,
         # to get bigger regions of variable size
         peak_starts, peak_ends = _find_peaks(
@@ -254,10 +255,12 @@ def diff(
         np.where((celltypes == group_names[0]) | (celltypes == group_names[1]))
     ).flatten()
     celltype_1 = (
-        celltypes[(celltypes == group_names[0]) | (celltypes == group_names[1])] == group_names[0]
+        celltypes[(celltypes == group_names[0]) | (celltypes == group_names[1])]
+        == group_names[0]
     )
     celltype_2 = (
-        celltypes[(celltypes == group_names[0]) | (celltypes == group_names[1])] == group_names[1]
+        celltypes[(celltypes == group_names[0]) | (celltypes == group_names[1])]
+        == group_names[1]
     )
     total_cells = len(celltypes)
 
@@ -422,7 +425,10 @@ def diff(
         del output_final[4]
 
         differential = np.count_nonzero(output_final[5] < 0.05)
-        echo(f"found {differential} significant differentially methylated regions at a significance level of 0.05")
+        echo(
+            f"found {differential} significant differentially methylated regions "
+            f"at a significance level of 0.05"
+        )
 
     np.savetxt(output, np.transpose(output_final), delimiter="\t", fmt="%s")
 
