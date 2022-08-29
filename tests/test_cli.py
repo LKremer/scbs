@@ -30,12 +30,12 @@ def test_diff_cli(tmp_path):
     dmr = read_csv(outfile, sep="\t", header=None)
     assert dmr[0].sum() == 5324
     assert dmr[1].sum() == 31250980767
-    assert dmr[2].sum() == 31252558767
-    assert dmr[3].sum() == -86.47359063078119
-    assert dmr[5].sum() == 186.0982029998757
+    assert dmr[2].sum() == 31252060767
+    assert dmr[3].sum() == -165.62208458348474
+    assert dmr[5].sum() == 190.7695160624927
     assert len(dmr[dmr[4] == "neuroblast"]) == 284
-    assert dmr[0][493] == 1
-    assert dmr[2][135] == 69439700
+    assert dmr[0][493] == 9
+    assert dmr[2][135] == 58035292
     assert dmr[4][237] == "neuroblast"
 
 
