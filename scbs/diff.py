@@ -56,10 +56,10 @@ def calc_fdr(datatype):
 def welch_t_test(group1, group2, min_cells):
     len_g1 = len(group1)
     if len_g1 < min_cells:
-        return np.nan, np.nan, np.nan
+        return np.nan
     len_g2 = len(group2)
     if len_g2 < min_cells:
-        return np.nan, np.nan, np.nan
+        return np.nan
 
     mean_g1 = np.mean(group1)
     mean_g2 = np.mean(group2)
@@ -76,7 +76,7 @@ def welch_t_test(group1, group2, min_cells):
         sum2 += sqdif2
 
     if sum1 == 0.0 and sum2 == 0.0:
-        return np.nan, np.nan, np.nan
+        return np.nan
 
     var_g1 = sum1 / (len_g1 - 1)
     var_g2 = sum2 / (len_g2 - 1)
@@ -84,13 +84,7 @@ def welch_t_test(group1, group2, min_cells):
     s_delta = math.sqrt(var_g1 / len_g1 + var_g2 / len_g2)
     t = (mean_g1 - mean_g2) / s_delta
 
-    numerator = (var_g1 / len_g1 + var_g2 / len_g2) ** 2
-    denominator = ((var_g1 / len_g1) ** 2 / (len_g1 - 1)) + (
-        (var_g2 / len_g2) ** 2 / (len_g2 - 1)
-    )
-    df = numerator / denominator
-
-    return t, s_delta, df
+    return t
 
 
 @njit(parallel=True)
@@ -152,7 +146,7 @@ def _move_windows(
             group2 = mean_shrunk_resid[index[1, chrom_bin]]
             group2 = group2[~np.isnan(group2)]
 
-        t, s_delta, df = welch_t_test(group1, group2, min_cells)
+        t = welch_t_test(group1, group2, min_cells)
         t_array[i] = t
 
     return windows, t_array
@@ -161,7 +155,7 @@ def _move_windows(
 def calc_tstat_peaks(
     chrom,
     datatype,
-    cells,
+    group_names,
     half_bw,
     data_chrom,
     indices_chrom,
@@ -180,9 +174,10 @@ def calc_tstat_peaks(
         array = np.empty(0)
         output.append(array)
 
-    for tstat_windows, cell, threshold_value in zip(
-        window_tstat_groups, cells, threshold_datatype
+    for tstat_windows, group_name, threshold_value in zip(
+        window_tstat_groups, group_names, threshold_datatype
     ):
+
         # merge overlapping windows with lowest and highest t-statistic,
         # to get bigger regions of variable size
         peak_starts, peak_ends = _find_peaks(
@@ -221,9 +216,9 @@ def calc_tstat_peaks(
                 group2 = mean_shrunk_resid[index[1, chrom_bin]]
                 group2 = group2[~np.isnan(group2)]
 
-            t_stat, s_delta, df = welch_t_test(group1, group2, min_cells)
+            t_stat = welch_t_test(group1, group2, min_cells)
 
-            datapoints = [chrom, ps, pe, t_stat, datatype, cell]
+            datapoints = [chrom, ps, pe, t_stat, datatype, group_name]
 
             for datapoint in range(len(datapoints)):
                 output[datapoint] = np.append(output[datapoint], datapoints[datapoint])
@@ -250,20 +245,22 @@ def diff(
             cells.append(celltypes[i])
 
     # which cell types are present in the input file (defines the two groups)
-    cells = np.unique(cells)
+    group_names = np.unique(cells)
 
-    index_realg1 = (celltypes == cells[0]).flatten()
-    index_realg2 = (celltypes == cells[1]).flatten()
+    index_realg1 = (celltypes == group_names[0]).flatten()
+    index_realg2 = (celltypes == group_names[1]).flatten()
 
     # needs to be calculated for the permutation
     idx_celltypes = np.asarray(
-        np.where((celltypes == cells[0]) | (celltypes == cells[1]))
+        np.where((celltypes == group_names[0]) | (celltypes == group_names[1]))
     ).flatten()
     celltype_1 = (
-        celltypes[(celltypes == cells[0]) | (celltypes == cells[1])] == cells[0]
+        celltypes[(celltypes == group_names[0]) | (celltypes == group_names[1])]
+        == group_names[0]
     )
     celltype_2 = (
-        celltypes[(celltypes == cells[0]) | (celltypes == cells[1])] == cells[1]
+        celltypes[(celltypes == group_names[0]) | (celltypes == group_names[1])]
+        == group_names[1]
     )
     total_cells = len(celltypes)
 
@@ -345,14 +342,14 @@ def diff(
             # and for permuted indices in the second array.
             iteration = 0
             if threshold_values[1, 1] == 0:
-                for tstat_windows, cell in zip(window_tstat_groups, cells):
+                for tstat_windows, group_name in zip(window_tstat_groups, group_names):
                     if datatype == "real":
                         threshold_values[0, iteration] = np.nanquantile(
                             tstat_windows, 1 - threshold
                         )
                         echo(
                             f"Determined threshold of {threshold_values[0,iteration]} "
-                            f"for {cell} of {datatype} data."
+                            f"for {group_name} of {datatype} data."
                         )
                     if datatype == "permuted":
                         threshold_values[1, iteration] = np.nanquantile(
@@ -363,7 +360,7 @@ def diff(
                             echo(
                                 f"Determined threshold of "
                                 f"{threshold_values[1,iteration]} "
-                                f"for {cell} of {datatype} data."
+                                f"for {group_name} of {datatype} data."
                             )
                     iteration += 1
 
@@ -377,7 +374,7 @@ def diff(
             output_iteration = calc_tstat_peaks(
                 chrom,
                 datatype,
-                cells,
+                group_names,
                 half_bw,
                 mat.data,
                 mat.indices,
@@ -428,7 +425,10 @@ def diff(
         del output_final[4]
 
         differential = np.count_nonzero(output_final[5] < 0.05)
-        echo(f"found {differential} significant differentially methylated regions.")
+        echo(
+            f"found {differential} significant differentially methylated regions "
+            f"at a significance level of 0.05"
+        )
 
     np.savetxt(output, np.transpose(output_final), delimiter="\t", fmt="%s")
 
@@ -439,7 +439,7 @@ def diff(
     # save both outputs
     # if datatype array is removed again change index from 5 to 4
     outputs = [output1, output2]
-    for cell, output in zip(cells, outputs):
+    for group_name, output in zip(group_names, outputs):
         output_cell = []
         filter_cells = output_final[5] == cell
         for column in range(len(output_final)):
