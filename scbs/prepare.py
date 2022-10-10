@@ -111,7 +111,7 @@ def _get_cell_names(cov_files):
 
 def _dump_coo_files(fpaths, input_format, n_cells, output_dir, round_sites, chunksize):
     try:
-        c_col, p_col, m_col, u_col, coverage, sep, header = _human_to_computer(
+        c_col, p_col, m_col, u_col, coverage, onlyrel, sep, header = _human_to_computer(
             input_format
         )
     except Exception as exc:
@@ -127,7 +127,7 @@ def _dump_coo_files(fpaths, input_format, n_cells, output_dir, round_sites, chun
         if cell_n % 50 == 0:
             echo("{0:.2f}% done...".format(100 * cell_n / n_cells))
         for line_vals in _iterate_covfile(
-            cov_file, c_col, p_col, m_col, u_col, coverage, sep, header
+            cov_file, c_col, p_col, m_col, u_col, coverage, onlyrel, sep, header
         ):
             chrom, genomic_pos, n_meth, n_unmeth = line_vals
             # to make the individual coo files smaller, we split each chromosome
@@ -253,12 +253,13 @@ def _write_summary_stats(data_dir, cell_names, n_obs, n_meth):
 class CoverageFormat:
     """Describes the columns in the coverage file."""
 
-    def __init__(self, chrom, pos, meth, umeth, coverage, sep, header):
+    def __init__(self, chrom, pos, meth, umeth, coverage, onlyrel, sep, header):
         self.chrom = chrom
         self.pos = pos
         self.meth = meth
         self.umeth = umeth
         self.cov = coverage
+        self.onlyrel = onlyrel
         self.sep = sep
         self.header = header
 
@@ -270,6 +271,7 @@ class CoverageFormat:
             self.meth,
             self.umeth,
             self.cov,
+            self.onlyrel,
             self.sep,
             self.header,
         )
@@ -299,7 +301,7 @@ def create_custom_format(format_string):
     if sep in ("\\t", "TAB", "tab", "T", "t"):
         sep = "\t"
     header = bool(int(format_string[5]))
-    return CoverageFormat(chrom, pos, meth, umeth, coverage, sep, header)
+    return CoverageFormat(chrom, pos, meth, umeth, coverage, False, sep, header)
 
 
 def _create_standard_format(format_name):
@@ -312,6 +314,7 @@ def _create_standard_format(format_name):
             4,
             5,
             False,
+            False,
             "\t",
             False,
         )
@@ -322,6 +325,29 @@ def _create_standard_format(format_name):
             4,
             5,
             True,
+            False,
+            "\t",
+            True,
+        )
+    elif format_name in ("biscuit"):
+        return CoverageFormat(
+            0,
+            1,
+            7, # Methylation share
+            7, # Dummy
+            8, # Total reads
+            True, # is relative 
+            "\t",
+            True,
+        )
+    elif format_name in ("biscuit_short"):
+        return CoverageFormat(
+            0,
+            1,
+            3, # Methylation share
+            3, # Dummy
+            4, # Total reads
+            True, # is relative 
             "\t",
             True,
         )
@@ -329,7 +355,7 @@ def _create_standard_format(format_name):
         raise Exception(f"{format_name} is not a known format")
 
 
-def _iterate_covfile(cov_file, c_col, p_col, m_col, u_col, coverage, sep, header):
+def _iterate_covfile(cov_file, c_col, p_col, m_col, u_col, coverage, onlyrel, sep, header):
     try:
         if cov_file.name.lower().endswith(".gz"):
             # handle gzip-compressed file
@@ -338,7 +364,7 @@ def _iterate_covfile(cov_file, c_col, p_col, m_col, u_col, coverage, sep, header
                 lines = lines[1:]
             for line in lines:
                 yield _line_to_values(
-                    line.strip().split(sep), c_col, p_col, m_col, u_col, coverage
+                    line.strip().split(sep), c_col, p_col, m_col, u_col, coverage, onlyrel
                 )
         else:
             # handle uncompressed file
@@ -352,6 +378,7 @@ def _iterate_covfile(cov_file, c_col, p_col, m_col, u_col, coverage, sep, header
                     m_col,
                     u_col,
                     coverage,
+                    onlyrel,
                 )
     # we add the name of the file which caused the crash so that the user can fix it
     except Exception as exc:
@@ -360,12 +387,16 @@ def _iterate_covfile(cov_file, c_col, p_col, m_col, u_col, coverage, sep, header
         )
 
 
-def _line_to_values(line, c_col, p_col, m_col, u_col, coverage):
+def _line_to_values(line, c_col, p_col, m_col, u_col, coverage, onlyrel):
     chrom = line[c_col]
     pos = int(line[p_col])
-    n_meth = int(line[m_col])
-    if coverage:
-        n_unmeth = int(line[u_col]) - n_meth
+    if onlyrel:
+        n_meth = round(float(line[m_col])*int(line[coverage]))
+        n_unmeth = round((1-float(line[m_col]))*int(line[coverage]))
     else:
-        n_unmeth = int(line[u_col])
+        n_meth = int(line[m_col])
+        if coverage:
+            n_unmeth = int(line[u_col]) - n_meth
+        else:
+            n_unmeth = int(line[u_col])
     return chrom, pos, n_meth, n_unmeth
