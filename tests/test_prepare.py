@@ -134,21 +134,23 @@ def test_get_cell_name():
 
 
 def test_coverage_format_creation():
-    assert _human_to_computer("bismark") == (
+    assert _human_to_computer("Bismarck") == (
         0,
         1,
         4,
         5,
         False,
+        False,
         "\t",
         False,
     )
-    assert _human_to_computer("allc") == (
+    assert _human_to_computer("allC") == (
         0,
         1,
         4,
         5,
         True,
+        False,
         "\t",
         True,
     )
@@ -158,6 +160,7 @@ def test_coverage_format_creation():
         2,
         3,
         True,
+        False,
         "\t",
         True,
     )
@@ -167,6 +170,7 @@ def test_coverage_format_creation():
         2,
         3,
         False,
+        False,
         "\t",
         True,
     )
@@ -175,6 +179,7 @@ def test_coverage_format_creation():
         1,
         2,
         3,
+        False,
         False,
         "\t",
         False,

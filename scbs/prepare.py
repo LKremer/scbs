@@ -333,10 +333,10 @@ def _create_standard_format(format_name):
         return CoverageFormat(
             0,
             1,
-            7, # Methylation share
-            7, # Dummy
-            8, # Total reads
-            True, # is relative 
+            7,  # Methylation share
+            7,  # Dummy
+            8,  # Total reads
+            True,  # is relative
             "\t",
             True,
         )
@@ -344,10 +344,10 @@ def _create_standard_format(format_name):
         return CoverageFormat(
             0,
             1,
-            3, # Methylation share
-            3, # Dummy
-            4, # Total reads
-            True, # is relative 
+            3,  # Methylation share
+            3,  # Dummy
+            4,  # Total reads
+            True,  # is relative
             "\t",
             True,
         )
@@ -355,7 +355,9 @@ def _create_standard_format(format_name):
         raise Exception(f"{format_name} is not a known format")
 
 
-def _iterate_covfile(cov_file, c_col, p_col, m_col, u_col, coverage, onlyrel, sep, header):
+def _iterate_covfile(
+    cov_file, c_col, p_col, m_col, u_col, coverage, onlyrel, sep, header
+):
     try:
         if cov_file.name.lower().endswith(".gz"):
             # handle gzip-compressed file
@@ -364,7 +366,13 @@ def _iterate_covfile(cov_file, c_col, p_col, m_col, u_col, coverage, onlyrel, se
                 lines = lines[1:]
             for line in lines:
                 yield _line_to_values(
-                    line.strip().split(sep), c_col, p_col, m_col, u_col, coverage, onlyrel
+                    line.strip().split(sep),
+                    c_col,
+                    p_col,
+                    m_col,
+                    u_col,
+                    coverage,
+                    onlyrel,
                 )
         else:
             # handle uncompressed file
@@ -391,8 +399,8 @@ def _line_to_values(line, c_col, p_col, m_col, u_col, coverage, onlyrel):
     chrom = line[c_col]
     pos = int(line[p_col])
     if onlyrel:
-        n_meth = round(float(line[m_col])*int(line[coverage]))
-        n_unmeth = round((1-float(line[m_col]))*int(line[coverage]))
+        n_meth = round(float(line[m_col]) * int(line[coverage]))
+        n_unmeth = round((1 - float(line[m_col])) * int(line[coverage]))
     else:
         n_meth = int(line[m_col])
         if coverage:

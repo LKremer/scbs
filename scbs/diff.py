@@ -251,17 +251,10 @@ def diff(
     index_realg2 = (celltypes == group_names[1]).flatten()
 
     # needs to be calculated for the permutation
-    idx_celltypes = np.asarray(
-        np.where((celltypes == group_names[0]) | (celltypes == group_names[1]))
-    ).flatten()
-    celltype_1 = (
-        celltypes[(celltypes == group_names[0]) | (celltypes == group_names[1])]
-        == group_names[0]
-    )
-    celltype_2 = (
-        celltypes[(celltypes == group_names[0]) | (celltypes == group_names[1])]
-        == group_names[1]
-    )
+    labeled_cells = (celltypes == group_names[0]) | (celltypes == group_names[1])
+    idx_celltypes = np.asarray(np.where(labeled_cells)).flatten()
+    celltype_1 = celltypes[labeled_cells] == group_names[0]
+    celltype_2 = celltypes[labeled_cells] == group_names[1]
     total_cells = len(celltypes)
 
     _check_data_dir(data_dir, assert_smoothed=True)
