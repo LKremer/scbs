@@ -139,7 +139,7 @@ def cli():
     default="bismark",
     help="""
     Specify the format of the input files. Options: 'bismark' (default),
-    'methylpy', 'allc' or custom (see below).
+    'methylpy', 'allc', 'biscuit', 'biscuit_short' or custom (see below).
 
     \b
     You can specify a custom format by specifying the separator, whether the

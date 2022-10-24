@@ -55,8 +55,8 @@ Options:
                        Note that sites with the same number of methylated and
                        unmethylated reads will always be discarded.
   --input-format TEXT  Specify the format of the input files. Options:
-                       'bismark' (default), 'methylpy', 'allc' or custom (see
-                       below).
+                       'bismark' (default), 'methylpy', 'allc', 'biscuit',
+                       'biscuit_short' or custom (see below).
                        
                        You can specify a custom format by specifying the separator, whether the
                        file has a header, and which information is stored in which columns. These
