@@ -158,6 +158,7 @@ Options:
   --help                    Show this message and exit.
 ```
 # diff
+Note: this command is currently under development and not yet available in the latest `scbs` version on PyPI (pip).
 ```
 Usage: scbs diff [OPTIONS] DATA_DIR CELL_GROUPS OUTPUT
 
