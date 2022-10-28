@@ -81,7 +81,7 @@ def _set_n_threads(ctx, param, value):
         {style("-", fg="blue")} instead of a file path.
         """,
 )
-@click.version_option()
+@click.version_option(version=__version__)
 def cli():
     pass
 
