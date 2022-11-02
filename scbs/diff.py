@@ -4,6 +4,7 @@ from glob import glob
 
 import numba
 import numpy as np
+import pandas as pd
 from numba import njit, prange
 
 from .numerics import _calc_mean_shrunken_residuals
@@ -226,6 +227,41 @@ def calc_tstat_peaks(
     return output
 
 
+def parse_cell_groups(csv_path, data_dir):
+    """
+    Parses the user-specified csv file that denotes the two groups of cells that
+    should be compared with scbs diff. Also checks that this file is valid.
+    Returns an array with the group labels and a list of the two group names.
+    """
+    cellname_path = os.path.join(data_dir, "column_header.txt")
+    cell_order = pd.read_csv(cellname_path, dtype="str", header=None, names=["cell"])
+    group_df = pd.read_csv(
+        csv_path,
+        dtype=str,
+        delimiter=",",
+        header=None,
+        names=["cell", "group"],
+        index_col=0,
+    )
+    if len(cell_order) != len(group_df):
+        raise Exception(
+            f"The data set stored in {data_dir} comprises {len(cell_order)} "
+            f"cells, but {csv_path} contains group labels for "
+            f"{len(group_df)} cells."
+        )
+    group_df = group_df.reindex(cell_order["cell"])
+    groups = set(group_df["group"])
+    groups.discard("-")
+    groups.discard("—")
+    groups = sorted(list(groups))
+    if len(groups) != 2:
+        raise Exception(
+            f"{csv_path} specifies {len(groups)} cell groups "
+            f"({', '.join(groups)}), but you need to specify exactly 2!"
+        )
+    return np.array(group_df["group"]), groups
+
+
 def diff(
     data_dir,
     cell_groups,
@@ -237,15 +273,13 @@ def diff(
     threads=-1,
     debug=False,
 ):
-    celltypes = np.loadtxt(cell_groups, dtype=str)
-    cells = []
+    _check_data_dir(data_dir, assert_smoothed=True)
+    if threads != -1:
+        numba.set_num_threads(threads)
+    n_threads = numba.get_num_threads()
+    half_bw = bandwidth // 2
 
-    for i in range(len(celltypes)):
-        if str(celltypes[i]) != "-":
-            cells.append(celltypes[i])
-
-    # which cell types are present in the input file (defines the two groups)
-    group_names = np.unique(cells)
+    celltypes, group_names = parse_cell_groups(cell_groups, data_dir)
 
     index_realg1 = (celltypes == group_names[0]).flatten()
     index_realg2 = (celltypes == group_names[1]).flatten()
@@ -256,12 +290,6 @@ def diff(
     celltype_1 = celltypes[labeled_cells] == group_names[0]
     celltype_2 = celltypes[labeled_cells] == group_names[1]
     total_cells = len(celltypes)
-
-    _check_data_dir(data_dir, assert_smoothed=True)
-    if threads != -1:
-        numba.set_num_threads(threads)
-    n_threads = numba.get_num_threads()
-    half_bw = bandwidth // 2
 
     # sort chroms by file size. We start with largest chrom to find the threshold
     chrom_paths = sorted(

@@ -8,37 +8,6 @@ from pandas import read_csv
 from scbs.cli import cli
 
 
-def test_diff_cli(tmp_path):
-    outfile = os.path.join(tmp_path, "dmr.bed")
-    runner = CliRunner()
-    result = runner.invoke(
-        cli,
-        [
-            "diff",
-            "tests/data/tiny_diff/",
-            "tests/data/tiny_diff/celltypes.txt",
-            "--min-cells",
-            "3",
-            outfile,
-        ],
-    )
-    assert result.exit_code == 0, result.output
-    assert (
-        "Determined threshold of 2.4871385120811462 for neuroblast of real data."
-        in result.output
-    )
-    dmr = read_csv(outfile, sep="\t", header=None)
-    assert dmr[0].sum() == 5324
-    assert dmr[1].sum() == 31250980767
-    assert dmr[2].sum() == 31252060767
-    assert dmr[3].sum() == -165.62208458348474
-    assert dmr[5].sum() == 190.7695160624927
-    assert len(dmr[dmr[4] == "neuroblast"]) == 284
-    assert dmr[0][493] == 9
-    assert dmr[2][135] == 58035292
-    assert dmr[4][237] == "neuroblast"
-
-
 def test_smooth_cli():
     runner = CliRunner()
     result = runner.invoke(

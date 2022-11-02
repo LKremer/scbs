@@ -370,11 +370,13 @@ def scan_cli(**kwargs):
     matrices produced by running 'scbs prepare', as well as the smoothed methylation
     values produced by running 'scbs smooth'.
 
-    {style("CELL_GROUPS", fg="green")} is a text file that lists the group membership
-    (e.g. cell type or treatment) of each cell. Each row contains one of two group
-    labels such as 'treated' and 'untreated' or 'neuron' and 'glia'. Cells that do not
-    belong to either of the two groups are labeled '-' (dash character). The order of
-    cells is specified in {style("DATA_DIR/column_header.txt", fg="green")}.
+    {style("CELL_GROUPS", fg="green")} is a comma-separated text file that lists the
+    group membership (e.g. cell type or treatment) of each cell. Each row contains two
+    comma-separated values: The cell name and its group label. Cell names are denoted in
+    {style("DATA_DIR/column_header.txt", fg="green")}. Only two cell groups can be
+    compared, so there should only be two unique group labels (e.g. "neuron" and "glia"
+    or "wildtype" and "KO"). To exclude cells that do not belong to either group from
+    the analysis, you can assign them the group label '-' (dash character).
 
     {style("OUTPUT", fg="green")} is the path of the output file in '.bed' format,
     containing the DMR genome coordinates, their t-statistic, the cell group in which
