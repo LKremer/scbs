@@ -46,7 +46,7 @@ def test_diff_cli(tmp_path):
         ],
     )
     assert result.exit_code == 0, result.output
-    assert "Determined threshold of 2.487 for neuroblast of real data." in result.output
+    assert "threshold of 2.487" in result.output
     dmr = pd.read_csv(outfile, sep="\t", header=None)
     assert dmr[0].sum() == 5324
     assert dmr[1].sum() == 31250980767
