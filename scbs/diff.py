@@ -10,7 +10,7 @@ from numba import njit, prange
 from .numerics import _calc_mean_shrunken_residuals
 from .scbs import _find_peaks
 from .smooth import _load_smoothed_chrom
-from .utils import _check_data_dir, _load_chrom_mat, echo
+from .utils import _check_data_dir, _get_filepath, _load_chrom_mat, echo, secho
 
 # ignore division by 0 and division by NaN error
 np.seterr(divide="ignore", invalid="ignore")
@@ -30,7 +30,6 @@ def permuted_indices(idx_celltypes, celltype_1, celltype_2, total_cells):
         index_g1[i] = True
     for i in permutation[celltype_2]:
         index_g2[i] = True
-
     return index_g1, index_g2
 
 
@@ -49,7 +48,6 @@ def calc_fdr(datatype):
 
         adj_p_val = fdisc / (fdisc + tdisc)
         adj_p_val_arr[i] = adj_p_val
-
     return adj_p_val_arr
 
 
@@ -84,7 +82,6 @@ def welch_t_test(group1, group2, min_cells):
 
     s_delta = math.sqrt(var_g1 / len_g1 + var_g2 / len_g2)
     t = (mean_g1 - mean_g2) / s_delta
-
     return t
 
 
@@ -223,7 +220,6 @@ def calc_tstat_peaks(
 
             for datapoint in range(len(datapoints)):
                 output[datapoint] = np.append(output[datapoint], datapoints[datapoint])
-
     return output
 
 
@@ -235,6 +231,7 @@ def parse_cell_groups(csv_path, data_dir):
     """
     cellname_path = os.path.join(data_dir, "column_header.txt")
     cell_order = pd.read_csv(cellname_path, dtype="str", header=None, names=["cell"])
+    n_cells_total = len(cell_order)
     group_df = pd.read_csv(
         csv_path,
         dtype=str,
@@ -243,23 +240,37 @@ def parse_cell_groups(csv_path, data_dir):
         names=["cell", "group"],
         index_col=0,
     )
-    if len(cell_order) != len(group_df):
+    if len(group_df) > n_cells_total:
         raise Exception(
-            f"The data set stored in {data_dir} comprises {len(cell_order)} "
-            f"cells, but {csv_path} contains group labels for "
-            f"{len(group_df)} cells."
+            f"The data set stored in {data_dir} comprises only {n_cells_total} "
+            f"cells, but {csv_path} contains group labels for {len(group_df)} cells."
         )
     group_df = group_df.reindex(cell_order["cell"])
+    group_df["group"] = group_df["group"].fillna("-")
     groups = set(group_df["group"])
-    groups.discard("-")
-    groups.discard("—")
+    groups -= {"-", "‒", "–", "—", "―"}
     groups = sorted(list(groups))
+    group_arr = np.array(group_df["group"])
     if len(groups) != 2:
         raise Exception(
             f"{csv_path} specifies {len(groups)} cell groups "
             f"({', '.join(groups)}), but you need to specify exactly 2!"
         )
-    return np.array(group_df["group"]), groups
+    n_g1 = (group_arr == groups[0]).sum()
+    n_g2 = (group_arr == groups[0]).sum()
+    secho(
+        f"Scanning the genome for differentially methylated regions between {n_g1} "
+        f"cells of group '{groups[0]}' and {n_g2} cells of group '{groups[1]}'.",
+        fg="green",
+    )
+    n_nogroup = n_cells_total - n_g1 - n_g2
+    if n_nogroup:
+        secho(
+            f"{n_nogroup} cells were not assigned to any group and will be ignored.",
+            fg="green",
+        )
+    echo()
+    return group_arr, groups
 
 
 def diff(
@@ -349,9 +360,9 @@ def diff(
                 datatype,
             )
 
-            # calculate t-statistic for group1 (low t-values)
-            # and group 2 (high t-values)
-            # to make this possible the t-stat was multiplied by -1 for group1
+            # calculate t-statistic for group1 (negative t-values)
+            # and group 2 (positive t-values)
+            # to make this possible the t-stat is multiplied by -1 for group1
             window_tstat_groups = [window_tstat * -1, window_tstat]
 
             # This is the first=biggest chrom,
@@ -369,8 +380,9 @@ def diff(
                             tstat_windows, 1 - threshold
                         )
                         echo(
-                            f"Determined threshold of {threshold_values[0,iteration]} "
-                            f"for {group_name} of {datatype} data."
+                            f"Determined t-value threshold of "
+                            f"{threshold_values[0,iteration]:.3f} for the "
+                            f"'{group_name}'cell group."
                         )
                     if datatype == "permuted":
                         threshold_values[1, iteration] = np.nanquantile(
@@ -379,9 +391,9 @@ def diff(
 
                         if debug:
                             echo(
-                                f"Determined threshold of "
+                                f"Determined t-value threshold of "
                                 f"{threshold_values[1,iteration]} "
-                                f"for {group_name} of {datatype} data."
+                                f"for {group_name} of permuted data."
                             )
                     iteration += 1
 
@@ -450,24 +462,5 @@ def diff(
             f"found {differential} significant differentially methylated regions "
             f"at a significance level of 0.05"
         )
-
+    echo(f"Writing DMRs to {_get_filepath(output)}")
     np.savetxt(output, np.transpose(output_final), delimiter="\t", fmt="%s")
-
-    """
-    # only important if there is two output files
-    # generate list of arrays according to selected celltypes
-    # and remove array with celltypes
-    # save both outputs
-    # if datatype array is removed again change index from 5 to 4
-    outputs = [output1, output2]
-    for group_name, output in zip(group_names, outputs):
-        output_cell = []
-        filter_cells = output_final[5] == cell
-        for column in range(len(output_final)):
-            output_cell.append(output_final[column][filter_cells])
-        del output_cell[5]
-
-        np.savetxt(output, np.transpose(output_cell), delimiter = "\t", fmt = '%s')
-    """
-
-    return

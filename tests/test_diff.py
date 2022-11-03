@@ -20,6 +20,17 @@ def test_parse_cell_groups():
     assert set(np.where(group_df == "-")[0]) == {10, 11}
 
 
+def test_parse_cell_groups_alt():
+    group_df, groups = parse_cell_groups(
+        "tests/data/tiny_diff/cell_groups_alt.csv", "tests/data/tiny_diff/"
+    )
+    assert len(groups) == 2
+    assert groups[0] == "neuroblast"
+    assert groups[1] == "oligodendrocyte"
+    assert set(np.where(group_df == "oligodendrocyte")[0]) == {0, 2, 6, 7, 9}
+    assert set(np.where(group_df == "neuroblast")[0]) == {1, 3, 4, 5, 8}
+
+
 def test_diff_cli(tmp_path):
     outfile = os.path.join(tmp_path, "dmr.bed")
     runner = CliRunner()
@@ -35,10 +46,7 @@ def test_diff_cli(tmp_path):
         ],
     )
     assert result.exit_code == 0, result.output
-    assert (
-        "Determined threshold of 2.4871385120811462 for neuroblast of real data."
-        in result.output
-    )
+    assert "Determined threshold of 2.487 for neuroblast of real data." in result.output
     dmr = pd.read_csv(outfile, sep="\t", header=None)
     assert dmr[0].sum() == 5324
     assert dmr[1].sum() == 31250980767
