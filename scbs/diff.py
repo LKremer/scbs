@@ -257,7 +257,7 @@ def parse_cell_groups(csv_path, data_dir):
             f"({', '.join(groups)}), but you need to specify exactly 2!"
         )
     n_g1 = (group_arr == groups[0]).sum()
-    n_g2 = (group_arr == groups[0]).sum()
+    n_g2 = (group_arr == groups[1]).sum()
     secho(
         f"Scanning the genome for differentially methylated regions between {n_g1} "
         f"cells of group '{groups[0]}' and {n_g2} cells of group '{groups[1]}'.",
@@ -382,7 +382,7 @@ def diff(
                         echo(
                             f"Determined t-value threshold of "
                             f"{threshold_values[0,iteration]:.3f} for the "
-                            f"'{group_name}'cell group."
+                            f"'{group_name}' cell group."
                         )
                     if datatype == "permuted":
                         threshold_values[1, iteration] = np.nanquantile(
@@ -392,8 +392,8 @@ def diff(
                         if debug:
                             echo(
                                 f"Determined t-value threshold of "
-                                f"{threshold_values[1,iteration]} "
-                                f"for {group_name} of permuted data."
+                                f"{threshold_values[1,iteration]:.3f} "
+                                f"for permutation {iteration} ({group_name})."
                             )
                     iteration += 1
 
