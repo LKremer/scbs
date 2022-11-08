@@ -13,6 +13,7 @@ A typical `scbs` workflow consists of the following steps which will be explaine
 3. use `scbs scan` to discover variably methylated regions (VMRs) in the genome, or alternatively provide your own regions of interest
 4. use `scbs matrix` to receive a methylation matrix analogous to the count matrix in scRNA-seq
 5. use the methylation matrix for downstream analysis such as dimensionality reduction and clustering
+6. optionally use `scbs diff` to find differentially methylated regions (DMRs) between two groups of cells
 
 
 ### What you will need
@@ -212,10 +213,8 @@ scbs matrix --threads 4 scbs_tutorial_data/mouse_promoters.bed filtered_data pro
 
 Now we can import our methylation matrix into a scripting language of our choice for downstream analysis.
 In this tutorial, we chose to use R.
-We read the matrix and create a new column `region` that denotes the genomic coordinates of each region.
-Next, we pivot the matrix from the long table format into a standard cell × region format.
+We first read the cell × region methylation matrix into R.
 Here we chose to use the shrunken residuals as our measure of methylation.
-Finally, we transform the dataframe into a matrix.
 
 ```r
 library(tidyverse)
@@ -263,6 +262,8 @@ We simply run our modified PCA on the centered methylation matrix...
 pca <- meth_mtx %>%
   scale(center = T, scale = F) %>%
   prcomp_iterative(n = 5, n_iter = 5)
+  
+rownames(pca$x) <- rownames(meth_mtx)
 ```
 
 ...and then plot the PCA, revealing three cell types with distinct methylomes:
@@ -276,11 +277,77 @@ pca$x %>%
 
 <img src="tutorial_PCA.png" width="300" height="300">
 
-Of course you can also use PCA on the promoter methylation matrix instead of the VMR matrix by simply loading `promoter_matrix.csv` instead of `VMR_matrix.csv`.
+Of course you can also use PCA on the promoter methylation matrix instead of the VMR matrix by simply loading `promoter_matrix/mean_shrunken_residuals.csv.gz` instead of `VMR_matrix/mean_shrunken_residuals.csv.gz`.
 This matrix yields a visually similar PCA, although the three cell types are not as cleanly separated:
 
 <img src="tutorial_PCA_promoter.png" width="300" height="300">
 
+
+### 5. Finding differentially methylated regions (DMRs)
+
+Now that we know that our sample consists of three groups of cells with different methylomes, the next step is to ask where in the genome methylation differs between those putative cell types.
+To scan the genome between two groups of cells, you can use `scbs diff`.
+For this tutorial, I am going to compare the methylomes of the cells on the left of the PCA plot to the cells on the top right of the PCA plot.
+I will call these two groups of cells group_A and group_B.
+`scbs diff` needs a simple comma-separated text file that lists which cell belongs to which group, like this:
+
+```
+cell_01,-
+cell_02,-
+cell_03,-
+cell_04,-
+cell_05,-
+cell_06,-
+cell_07,-
+cell_08,-
+cell_09,-
+cell_11,group_A
+cell_12,group_A
+cell_13,group_A
+cell_14,group_A
+cell_15,group_A
+cell_16,group_A
+cell_17,group_A
+cell_18,group_A
+cell_19,group_A
+cell_21,group_B
+cell_22,group_B
+cell_23,group_B
+cell_24,group_B
+cell_25,group_B
+cell_26,group_B
+cell_27,group_B
+cell_28,group_B
+cell_29,group_B
+```
+
+The cells I labeled with the group `-`, i.e. cells in the bottom right of the PCA plot, are not part of the comparison.
+
+There are many different ways to generate this text file.
+Usually you would use clustering, but for simplicity of this tutorial I just grouped the cells according to their position in the PCA:
+
+```r
+cell_groups <- pca$x %>% 
+  as_tibble(rownames="cell") %>% 
+  mutate(group = case_when(
+    PC1 < 0 ~ "group_A",
+    PC1 > 0 & PC2 > 0 ~ "group_B",
+    TRUE ~ "-"
+  ))
+  
+cell_groups %>%
+  dplyr::select(cell, group) %>% 
+  write_csv("cell_groups.csv", col_names=F)
+```
+
+Once you have this file, you can run `scbs diff` to find DMRs between group_A and group_B:
+
+```bash
+scbs diff --threads 4 filtered_data cell_groups.csv DMRs.bed
+```
+
+The output file `DMRs.bed` contains a list of DMRs, their genome coordinates, the methylation difference measured by the t-statistic, and an adjusted p-value for each DMR.
+One way to explore potential functions of these DMRs is to use tools such as [GREAT](http://great.stanford.edu).
 
 
 
@@ -289,15 +356,14 @@ This matrix yields a visually similar PCA, although the three cell types are not
 #### Using stdin and stdout
 If you want to use stdin and stdout instead of providing input/output file paths, you can use the `-` character where you would otherwise write the path to the file.
 This makes it easy to incorporate other tools such as `bedtools` into your workflows.
-For example, consider a workflow where you first want to sort your genomic input regions with `bedtools sort`, then you want to quantify methylation at these regions with `scbs matrix`, and then you want to compress the resulting matrix:
+For example, consider a workflow where you first want to sort your genomic input regions with `bedtools sort`, then you want to quantify methylation at these regions with `scbs matrix`:
 ```bash
 bedtools sort -i unsorted.bed > sorted.bed
-scbs matrix sorted.bed filtered_data matrix.csv
-gzip matrix.csv
+scbs matrix sorted.bed filtered_data output
 ```
 Using stdin and stdout, this workflow can be simplified:
 ```bash
-bedtools sort -i unsorted.bed | scbs matrix - filtered_data - | gzip > matrix.csv.gz
+bedtools sort -i unsorted.bed | scbs matrix - filtered_data output
 ```
 
 
