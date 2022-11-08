@@ -13,6 +13,7 @@ A typical `scbs` workflow consists of the following steps which will be explaine
 3. use `scbs scan` to discover variably methylated regions (VMRs) in the genome, or alternatively provide your own regions of interest
 4. use `scbs matrix` to receive a methylation matrix analogous to the count matrix in scRNA-seq
 5. use the methylation matrix for downstream analysis such as dimensionality reduction and clustering
+6. optionally use `scbs diff` to find differentially methylated regions (DMRs) between two groups of cells
 
 
 ### What you will need
@@ -55,7 +56,7 @@ In this tutorial, we will analyze a small example data set with just 30 cells. I
 ### 1. Preparing your `scbs` run
 
 The first step of any `scbs` workflow is to collect the methylation data of all single-cell files in order to store it in a more efficient format.
-This can be achieved with the commands `scbs prepare`:
+This can be achieved with the command `scbs prepare`:
 
 ```bash
 scbs prepare scbs_tutorial_data/*.cov compact_data
@@ -175,31 +176,36 @@ The result is a [BED-file](https://en.wikipedia.org/wiki/BED_(file_format)) that
 
 Finally, you can quantify the mean methylation of the VMRs that we just discovered using `scbs matrix`:
 ```bash
-scbs matrix VMRs.bed filtered_data VMR_matrix.csv
+scbs matrix --threads 4 VMRs.bed filtered_data VMR_matrix
 ```
-The result is a long table that lists the average methylation of all regions (here: VMRs) in all cells. We report two measures of methylation: the average methylation (`meth_frac`) and the shrunken residuals (`shrunken_residual`), which are less affected by random variations in read coverage and read positioning within the region.
-This table is currently in [narrow table format](https://en.wikipedia.org/wiki/Wide_and_narrow_data) (also called long table format), which means that every row contains the information of one region in a specific cell:
+The output directory `VMR_matrix` contains the cell × region methylation matrix that lists the average methylation of all regions (here: VMRs) in all cells.
+It is similar to the count matrices generated in scRNA-seq experiments.
+You can find the average methylation of each region in `VMR_matrix/methylation_fractions.csv.gz`.
+Here is a peek of this matrix:
 
+|         | 1:7844602-7846612 | 1:8409032-8412852 | 1:10376412-10378562 | ... |
+|---------|-------------------|-------------------|---------------------|-----|
+| cell_01 |                   | 1.0               |                     |     |
+| cell_02 |                   | 1.0               | 0.6666667           |     |
+| cell_03 |                   | 0.0               | 1.0                 |     |
+| cell_04 | 1.0               | 0.3333333         | 0.0                 |     |
+| ...     |                   |                   |                     |     |
 
-| chromosome | start   | end     | n_sites | n_cells | cell_name | n_meth | n_obs | meth_frac | shrunken_residual   |
-| ---------- | ------- | ------- | ------- | ------- | --------- | ------ | ----- | --------- | ------------------- |
-| 2          | 3194798 | 3197978 | 19      | 14      | cell_01   | 1      | 1     | 1.0       | 0.2733494383016978  |
-| 2          | 3194798 | 3197978 | 19      | 14      | cell_04   | 5      | 5     | 1.0       | 0.34927947513611973 |
-| 2          | 3194798 | 3197978 | 19      | 14      | cell_05   | 2      | 2     | 1.0       | 0.4367514666223647  |
-| 2          | 3194798 | 3197978 | 19      | 14      | cell_08   | 2      | 2     | 1.0       | 0.1101753329826048  |
-| 2          | 3194798 | 3197978 | 19      | 14      | cell_12   | 1      | 10    | 0.1       | -0.3877691051698608 |
-| ...        |         |         |         |         |           |        |       |           |                     |
+Note that the matrix contains many missing values.
+You can also see that the measured methylation values look like fractions with a small denominator (e.g. 1/1, 2/2, 1/3, ...).
+Both of these observations are characteristic for single-cell methylation data:
+Due to the low sequencing coverage of single cell methylomes, each region contains only very few reads, or no reads at all.
+As a result, we only know the methylation status of very few (or no) CpG sites in each region.
+The output directory also contains the number of methylated CpG sites, and the number of CpG sites with sequencing coverage, for each region (i.e. the numerators and denominators of the methylation fractions).
 
-Note that this table also contains some information about the regions that we quantified:
-`n_sites` is the number of methylation sites (usually CpG dinucleotides) and `n_cells` is the number of cells for which we were able to quantify methylation in that region.
-In this specific case, region `2:3194798-3197978` contains 19 CpG sites and 14 of our 27 cells had at least one sequencing read mapped to the region.
-Note that the table contains multiple rows per region (one for each cell), which is why `n_sites` and `n_cells` are repeated here.
+To mitigate the issues introduced by low coverage, we also report an alternative measure of methylation: the mean shrunken residuals of each region, reported in `VMR_matrix/mean_shrunken_residuals.csv.gz`.
+These methylation estimates are less affected by random variations in read coverage and read positioning within the region.
 This methylation matrix can now be used to distinguish different cell types in the sample, perform PCA and/or UMAP, or perform clustering.
 
 If you want, you can also get a methylation matrix of specific genomic features that you are interested in.
 For example, here we quantify methylation of promoters in the mouse genome:
 ```bash
-scbs matrix scbs_tutorial_data/mouse_promoters.bed filtered_data promoter_matrix.csv
+scbs matrix --threads 4 scbs_tutorial_data/mouse_promoters.bed filtered_data promoter_matrix
 ```
 
 
@@ -207,19 +213,14 @@ scbs matrix scbs_tutorial_data/mouse_promoters.bed filtered_data promoter_matrix
 
 Now we can import our methylation matrix into a scripting language of our choice for downstream analysis.
 In this tutorial, we chose to use R.
-We read the matrix and create a new column `region` that denotes the genomic coordinates of each region.
-Next, we pivot the matrix from the long table format into a standard cell × region format.
+We first read the cell × region methylation matrix into R.
 Here we chose to use the shrunken residuals as our measure of methylation.
-Finally, we transform the dataframe into a matrix.
 
 ```r
 library(tidyverse)
 library(irlba)
 
-meth_mtx <- read_csv("VMR_matrix.csv") %>% 
-  unite("region", c("chromosome", "start", "end")) %>% 
-  pivot_wider("cell_name", names_from = "region", values_from = "shrunken_residual") %>% 
-  column_to_rownames(var="cell_name") %>% 
+meth_mtx <- read.csv("VMR_matrix/mean_shrunken_residuals.csv.gz", row.names=1) %>%
   as.matrix()
 ```
 
@@ -261,6 +262,8 @@ We simply run our modified PCA on the centered methylation matrix...
 pca <- meth_mtx %>%
   scale(center = T, scale = F) %>%
   prcomp_iterative(n = 5, n_iter = 5)
+  
+rownames(pca$x) <- rownames(meth_mtx)
 ```
 
 ...and then plot the PCA, revealing three cell types with distinct methylomes:
@@ -274,11 +277,77 @@ pca$x %>%
 
 <img src="tutorial_PCA.png" width="300" height="300">
 
-Of course you can also use PCA on the promoter methylation matrix instead of the VMR matrix by simply loading `promoter_matrix.csv` instead of `VMR_matrix.csv`.
+Of course you can also use PCA on the promoter methylation matrix instead of the VMR matrix by simply loading `promoter_matrix/mean_shrunken_residuals.csv.gz` instead of `VMR_matrix/mean_shrunken_residuals.csv.gz`.
 This matrix yields a visually similar PCA, although the three cell types are not as cleanly separated:
 
 <img src="tutorial_PCA_promoter.png" width="300" height="300">
 
+
+### 5. Finding differentially methylated regions (DMRs)
+
+Now that we know that our sample consists of three groups of cells with different methylomes, the next step is to ask where in the genome methylation differs between those putative cell types.
+To scan the genome between two groups of cells, you can use `scbs diff`.
+For this tutorial, I am going to compare the methylomes of the cells on the left of the PCA plot to the cells on the top right of the PCA plot.
+I will call these two groups of cells group_A and group_B.
+`scbs diff` needs a simple comma-separated text file that lists which cell belongs to which group, like this:
+
+```
+cell_01,-
+cell_02,-
+cell_03,-
+cell_04,-
+cell_05,-
+cell_06,-
+cell_07,-
+cell_08,-
+cell_09,-
+cell_11,group_A
+cell_12,group_A
+cell_13,group_A
+cell_14,group_A
+cell_15,group_A
+cell_16,group_A
+cell_17,group_A
+cell_18,group_A
+cell_19,group_A
+cell_21,group_B
+cell_22,group_B
+cell_23,group_B
+cell_24,group_B
+cell_25,group_B
+cell_26,group_B
+cell_27,group_B
+cell_28,group_B
+cell_29,group_B
+```
+
+The cells I labeled with the group `-`, i.e. cells in the bottom right of the PCA plot, are not part of the comparison.
+
+There are many different ways to generate this text file.
+Usually you would use clustering, but for simplicity of this tutorial I just grouped the cells according to their position in the PCA:
+
+```r
+cell_groups <- pca$x %>% 
+  as_tibble(rownames="cell") %>% 
+  mutate(group = case_when(
+    PC1 < 0 ~ "group_A",
+    PC1 > 0 & PC2 > 0 ~ "group_B",
+    TRUE ~ "-"
+  ))
+  
+cell_groups %>%
+  dplyr::select(cell, group) %>% 
+  write_csv("cell_groups.csv", col_names=F)
+```
+
+Once you have this file, you can run `scbs diff` to find DMRs between group_A and group_B:
+
+```bash
+scbs diff --threads 4 filtered_data cell_groups.csv DMRs.bed
+```
+
+The output file `DMRs.bed` contains a list of DMRs, their genome coordinates, the methylation difference measured by the t-statistic, and an adjusted p-value for each DMR.
+One way to explore potential functions of these DMRs is to use tools such as [GREAT](http://great.stanford.edu).
 
 
 
@@ -287,15 +356,14 @@ This matrix yields a visually similar PCA, although the three cell types are not
 #### Using stdin and stdout
 If you want to use stdin and stdout instead of providing input/output file paths, you can use the `-` character where you would otherwise write the path to the file.
 This makes it easy to incorporate other tools such as `bedtools` into your workflows.
-For example, consider a workflow where you first want to sort your genomic input regions with `bedtools sort`, then you want to quantify methylation at these regions with `scbs matrix`, and then you want to compress the resulting matrix:
+For example, consider a workflow where you first want to sort your genomic input regions with `bedtools sort`, then you want to quantify methylation at these regions with `scbs matrix`:
 ```bash
 bedtools sort -i unsorted.bed > sorted.bed
-scbs matrix sorted.bed filtered_data matrix.csv
-gzip matrix.csv
+scbs matrix sorted.bed filtered_data output
 ```
 Using stdin and stdout, this workflow can be simplified:
 ```bash
-bedtools sort -i unsorted.bed | scbs matrix - filtered_data - | gzip > matrix.csv.gz
+bedtools sort -i unsorted.bed | scbs matrix - filtered_data output
 ```
 
 
