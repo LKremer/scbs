@@ -144,8 +144,6 @@ def matrix(data_dir, regions, output_dir, threads):
             region_names.append(f"{chrom}:{start}-{end}")
 
     echo(f"Writing matrices to {output_dir} ...")
-    _write_mtx(meth, cell_names, region_names, output_dir, "methylated_sites.csv.gz")
-    _write_mtx(total, cell_names, region_names, output_dir, "total_sites.csv.gz")
     mfracs = [np.divide(m, t) for m, t in zip(meth, total)]
     _write_mtx(
         mfracs, cell_names, region_names, output_dir, "methylation_fractions.csv.gz"
@@ -153,3 +151,5 @@ def matrix(data_dir, regions, output_dir, threads):
     _write_mtx(
         msr, cell_names, region_names, output_dir, "mean_shrunken_residuals.csv.gz"
     )
+    _write_mtx(total, cell_names, region_names, output_dir, "total_sites.csv.gz")
+    _write_mtx(meth, cell_names, region_names, output_dir, "methylated_sites.csv.gz")
