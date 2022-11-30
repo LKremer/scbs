@@ -245,6 +245,13 @@ def parse_cell_groups(csv_path, data_dir):
             f"The data set stored in {data_dir} comprises only {n_cells_total} "
             f"cells, but {csv_path} contains group labels for {len(group_df)} cells."
         )
+    extra_cells = set(group_df.index) - set(cell_order.cell)
+    if extra_cells:
+        raise Exception(
+            f"One or more cells that you specified in {_get_filepath(csv_path)} are "
+            f"not present in {cellname_path}. These are the cells that were not "
+            f"found: '{', '.join(extra_cells)}'."
+        )
     group_df = group_df.reindex(cell_order["cell"])
     group_df["group"] = group_df["group"].fillna("-")
     groups = set(group_df["group"])
