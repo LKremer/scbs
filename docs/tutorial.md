@@ -283,7 +283,7 @@ This matrix yields a visually similar PCA, although the three cell types are not
 <img src="tutorial_PCA_promoter.png" width="300" height="300">
 
 
-### 5. Finding differentially methylated regions (DMRs)
+### 6. Finding differentially methylated regions (DMRs)
 
 Now that we know that our sample consists of three groups of cells with different methylomes, the next step is to ask where in the genome methylation differs between those putative cell types.
 To scan the genome between two groups of cells, you can use `scbs diff`.
