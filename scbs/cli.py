@@ -342,6 +342,16 @@ def smooth_cli(**kwargs):
     "are merged.",
 )
 @click.option(
+    "--min-cells",
+    default=6,
+    type=click.IntRange(min=1),
+    metavar="INTEGER",
+    show_default=True,
+    help="The minimum number of cells required to report a VMR. For example, "
+    "a value of 6 means that only VMRs with sequencing coverage in at least 6 "
+    "cells are reported.",
+)
+@click.option(
     "--threads",
     default=-1,
     help="How many CPU threads to use in parallel.  [default: all available]",

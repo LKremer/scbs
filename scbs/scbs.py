@@ -97,7 +97,7 @@ def _move_windows(
     return windows, smoothed_var
 
 
-def scan(data_dir, output, bandwidth, stepsize, var_threshold, threads=-1):
+def scan(data_dir, output, bandwidth, stepsize, var_threshold, min_cells, threads=-1):
     _check_data_dir(data_dir, assert_smoothed=True)
     if threads != -1:
         numba.set_num_threads(threads)
@@ -155,6 +155,15 @@ def scan(data_dir, output, bandwidth, stepsize, var_threshold, threads=-1):
         # for each big merged peak, re-calculate the variance and
         # write it to a file.
         for ps, pe in zip(peak_starts, peak_ends):
+            # get some basic info about the VMR: how many CpGs does it contain,
+            # how many cells have coverage of the region?
+            region_indices = mat.indices[mat.indptr[ps] : mat.indptr[pe + 1]]
+            n_obs_cells = _count_n_cells(region_indices)
+            if n_obs_cells < min_cells:
+                continue  # not enough coverage to report the VMR
+            region_indptr = mat.indptr[ps : pe + 2] - mat.indptr[ps]
+            n_cpg = _count_n_cpg(region_indptr)
+            # calculate variance for the whole peak
             peak_var = np.nanvar(
                 _calc_mean_shrunken_residuals(
                     mat.data,
@@ -167,12 +176,6 @@ def scan(data_dir, output, bandwidth, stepsize, var_threshold, threads=-1):
                     chrom_len,
                 )
             )
-            # get some basic info about the VMR: how many CpGs does it contain,
-            # how many cells have coverage of the region?
-            region_indptr = mat.indptr[ps : pe + 2] - mat.indptr[ps]
-            n_cpg = _count_n_cpg(region_indptr)
-            region_indices = mat.indices[mat.indptr[ps] : mat.indptr[pe + 1]]
-            n_obs_cells = _count_n_cells(region_indices)
             # write a row to the output bed file
             bed_entry = f"{chrom}\t{ps}\t{pe}\t{peak_var}\t{n_cpg}\t{n_obs_cells}\n"
             output.write(bed_entry)
@@ -188,9 +191,10 @@ def scan(data_dir, output, bandwidth, stepsize, var_threshold, threads=-1):
                 fg="red",
             )
     echo(
-        f"\nWrote all detected VMRs to {_get_filepath(output)}\n"
+        f"\nWrote VMRs with sequencing coverage in at least {min_cells} cells "
+        f"to {_get_filepath(output)}\n"
         "The columns in this file correspond to:\n"
         "chromosome, VMR start, VMR end, variance, # of CpG sites, "
-        "# of cells with sequencing coverage in the VMR"
+        "# of cells with coverage in the VMR"
     )
     return
