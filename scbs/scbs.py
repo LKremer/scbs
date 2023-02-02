@@ -6,7 +6,7 @@ import numba
 import numpy as np
 from numba import njit, prange
 
-from .numerics import _calc_mean_shrunken_residuals
+from .numerics import _calc_mean_shrunken_residuals, _count_n_cells, _count_n_cpg
 from .smooth import _load_smoothed_chrom
 from .utils import _check_data_dir, _load_chrom_mat, echo, secho
 
@@ -167,7 +167,14 @@ def scan(data_dir, output, bandwidth, stepsize, var_threshold, threads=-1):
                     chrom_len,
                 )
             )
-            bed_entry = f"{chrom}\t{ps}\t{pe}\t{peak_var}\n"
+            # get some basic info about the VMR: how many CpGs does it contain,
+            # how many cells have coverage of the region?
+            region_indptr = mat.indptr[ps : pe + 1] - mat.indptr[ps]
+            n_cpg = _count_n_cpg(region_indptr)
+            region_indices = mat.indices[mat.indptr[ps] : mat.indptr[pe]]
+            n_obs_cells = _count_n_cells(region_indices)
+            # write a row to the output bed file
+            bed_entry = f"{chrom}\t{ps}\t{pe}\t{peak_var}\t{n_cpg}\t{n_obs_cells}\n"
             output.write(bed_entry)
         if len(peak_starts) > 0:
             secho(
@@ -180,19 +187,3 @@ def scan(data_dir, output, bandwidth, stepsize, var_threshold, threads=-1):
                 fg="red",
             )
     return
-
-
-# currently not needed but could be useful:
-# @njit
-# def _count_n_cells(region_indices):
-#     """
-#     Count the total number of CpGs in a region, based on CSR matrix indices.
-#     Only CpGs that have coverage in at least 1 cell are counted.
-#     """
-#     seen_cells = set()
-#     n_cells = 0
-#     for cell_idx in region_indices:
-#         if cell_idx not in seen_cells:
-#             seen_cells.add(cell_idx)
-#             n_cells += 1
-#     return n_cells

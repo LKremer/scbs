@@ -103,3 +103,12 @@ def _count_n_cpg(region_indptr):
             n_cpg += 1
             prev_val = val
     return n_cpg
+
+
+@njit
+def _count_n_cells(region_indices):
+    """
+    Count the total number of cells that have sequencing coverage in a region,
+    based on CSR matrix indices.
+    """
+    return np.unique(region_indices).size
