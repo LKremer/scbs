@@ -179,7 +179,7 @@ def scan(data_dir, output, bandwidth, stepsize, var_threshold, threads=-1):
         if len(peak_starts) > 0:
             secho(
                 f"Found {len(peak_starts)} variably methylated regions on "
-                "chromosome {chrom}.",
+                f"chromosome {chrom}.",
                 fg="green",
             )
         else:
