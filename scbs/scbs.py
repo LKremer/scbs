@@ -8,7 +8,7 @@ from numba import njit, prange
 
 from .numerics import _calc_mean_shrunken_residuals, _count_n_cells, _count_n_cpg
 from .smooth import _load_smoothed_chrom
-from .utils import _check_data_dir, _load_chrom_mat, echo, secho
+from .utils import _check_data_dir, _get_filepath, _load_chrom_mat, echo, secho
 
 # ignore division by 0 and division by NaN error
 np.seterr(divide="ignore", invalid="ignore")
@@ -178,12 +178,19 @@ def scan(data_dir, output, bandwidth, stepsize, var_threshold, threads=-1):
             output.write(bed_entry)
         if len(peak_starts) > 0:
             secho(
-                f"Found {len(peak_starts)} variable regions on chromosome {chrom}.",
+                f"Found {len(peak_starts)} variably methylated regions on "
+                "chromosome {chrom}.",
                 fg="green",
             )
         else:
             secho(
-                f"Found no variable regions on chromosome {chrom}.",
+                f"Found no variably methylated regions on chromosome {chrom}.",
                 fg="red",
             )
+    echo(
+        f"\nWrote all detected VMRs to {_get_filepath(output)}\n"
+        "The columns in this file correspond to:\n"
+        "chromosome, VMR start, VMR end, variance, # of CpG sites, "
+        "# of cells with sequencing coverage in the VMR"
+    )
     return
