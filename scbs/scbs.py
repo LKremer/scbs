@@ -169,9 +169,9 @@ def scan(data_dir, output, bandwidth, stepsize, var_threshold, threads=-1):
             )
             # get some basic info about the VMR: how many CpGs does it contain,
             # how many cells have coverage of the region?
-            region_indptr = mat.indptr[ps : pe + 1] - mat.indptr[ps]
+            region_indptr = mat.indptr[ps : pe + 2] - mat.indptr[ps]
             n_cpg = _count_n_cpg(region_indptr)
-            region_indices = mat.indices[mat.indptr[ps] : mat.indptr[pe]]
+            region_indices = mat.indices[mat.indptr[ps] : mat.indptr[pe + 1]]
             n_obs_cells = _count_n_cells(region_indices)
             # write a row to the output bed file
             bed_entry = f"{chrom}\t{ps}\t{pe}\t{peak_var}\t{n_cpg}\t{n_obs_cells}\n"

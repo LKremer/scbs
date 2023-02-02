@@ -41,7 +41,7 @@ def test_scan_cli():
         ],
     )
     assert result.exit_code == 0, result.output
-    assert "Found no variable regions" in result.output
+    assert "Found no variably methylated regions" in result.output
 
 
 def test_matrix_cli(tmp_path):
