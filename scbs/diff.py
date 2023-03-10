@@ -6,8 +6,13 @@ import numba
 import numpy as np
 import pandas as pd
 from numba import njit, prange
+from scipy.stats import t
 
-from .numerics import _calc_mean_shrunken_residuals
+from .numerics import (
+    _calc_mean_shrunken_residuals,
+    _calc_mean_shrunken_residuals_and_mfracs,
+    _count_n_cpg,
+)
 from .scbs import _find_peaks
 from .smooth import _load_smoothed_chrom
 from .utils import _check_data_dir, _get_filepath, _load_chrom_mat, echo, secho
@@ -53,6 +58,9 @@ def calc_fdr(datatype):
 
 @njit(nogil=True)
 def welch_t_test(group1, group2, min_cells):
+    """
+    calculates the t-statistic according to Welch's t-test for unequal variances
+    """
     len_g1 = len(group1)
     if len_g1 < min_cells:
         return np.nan
@@ -83,6 +91,51 @@ def welch_t_test(group1, group2, min_cells):
     s_delta = math.sqrt(var_g1 / len_g1 + var_g2 / len_g2)
     t = (mean_g1 - mean_g2) / s_delta
     return t
+
+
+@njit(nogil=True)
+def welch_t_test_df(group1, group2, min_cells):
+    """
+    calculates the t-statistic and the degrees of freedom according to Welch's
+    t-test for unequal variances. todo: somehow merge with welch_t_test()
+    """
+    len_g1 = len(group1)
+    len_g2 = len(group2)
+    if len_g1 < min_cells:
+        return np.nan, np.nan, len_g1, len_g2
+    if len_g2 < min_cells:
+        return np.nan, np.nan, len_g1, len_g2
+
+    mean_g1 = np.mean(group1)
+    mean_g2 = np.mean(group2)
+
+    sum1 = 0.0
+    sum2 = 0.0
+
+    for value in group1:
+        sqdif1 = (value - mean_g1) ** 2
+        sum1 += sqdif1
+
+    for value in group2:
+        sqdif2 = (value - mean_g2) ** 2
+        sum2 += sqdif2
+
+    if sum1 == 0.0 and sum2 == 0.0:
+        return np.nan, np.nan, len_g1, len_g2
+
+    var_g1 = sum1 / (len_g1 - 1)
+    var_g2 = sum2 / (len_g2 - 1)
+
+    s_delta = math.sqrt(var_g1 / len_g1 + var_g2 / len_g2)
+    t = (mean_g1 - mean_g2) / s_delta
+
+    # calculate degrees of freedom
+    numerator = ((var_g1 / len_g1) + (var_g2 / len_g2)) ** 2
+    denominator = ((var_g1 / len_g1) ** 2 / (len_g1 - 1)) + (
+        (var_g2 / len_g2) ** 2 / (len_g2 - 1)
+    )
+    df = numerator / denominator
+    return t, df, len_g1, len_g2
 
 
 @njit(parallel=True)
@@ -168,9 +221,8 @@ def calc_tstat_peaks(
     genomic_positions,
 ):
     output = []
-    for _ in range(6):
-        array = np.empty(0)
-        output.append(array)
+    for _ in range(13):  # number of columns in the final output table
+        output.append(np.empty(0))
 
     for tstat_windows, group_name, threshold_value in zip(
         window_tstat_groups, group_names, threshold_datatype
@@ -184,7 +236,11 @@ def calc_tstat_peaks(
 
         # for each big merged peak, re-calculate the t-statistic
         for ps, pe in zip(peak_starts, peak_ends):
-            mean_shrunk_resid = _calc_mean_shrunken_residuals(
+            # how many CpGs does the VMR contain?
+            region_indptr = indptr_chrom[ps : pe + 2] - indptr_chrom[ps]
+            n_cpg = _count_n_cpg(region_indptr)
+
+            mean_shrunk_resid, mfracs = _calc_mean_shrunken_residuals_and_mfracs(
                 data_chrom,
                 indices_chrom,
                 indptr_chrom,
@@ -202,6 +258,9 @@ def calc_tstat_peaks(
                 group2 = mean_shrunk_resid[index[1, 0]]
                 group2 = group2[~np.isnan(group2)]
 
+                g1_mfrac = np.nanmean(mfracs[index[0, 0]])
+                g2_mfrac = np.nanmean(mfracs[index[1, 0]])
+
             # A new permutation is used every 2Mbp.
             # Therefore, the next "column" of the array has to be accessed.
             # The column index (chrom_bin)
@@ -214,9 +273,29 @@ def calc_tstat_peaks(
                 group2 = mean_shrunk_resid[index[1, chrom_bin]]
                 group2 = group2[~np.isnan(group2)]
 
-            t_stat = welch_t_test(group1, group2, min_cells)
+                g1_mfrac = np.nanmean(mfracs[index[0, chrom_bin]])
+                g2_mfrac = np.nanmean(mfracs[index[1, chrom_bin]])
 
-            datapoints = [chrom, ps, pe, t_stat, datatype, group_name]
+            t_stat, df, n_cells_g1, n_cells_g2 = welch_t_test_df(
+                group1, group2, min_cells
+            )
+            p = 2 * (1 - t.cdf(x=abs(t_stat), df=df))  # raw two-tailed p-value
+
+            datapoints = [
+                chrom,
+                ps,
+                pe,
+                t_stat,
+                df,
+                p,
+                datatype,
+                group_name,
+                n_cpg,
+                n_cells_g1,
+                n_cells_g2,
+                g1_mfrac,
+                g2_mfrac,
+            ]
 
             for datapoint in range(len(datapoints)):
                 output[datapoint] = np.append(output[datapoint], datapoints[datapoint])
@@ -446,23 +525,23 @@ def diff(
                 )
 
     # sort descending by absolute t-statistic
-    idx = np.argsort(np.absolute(output_final[3]) * -1)
+    idx = np.argsort(-np.absolute(output_final[3]))
     for column in range(len(output_final)):
         output_final[column] = output_final[column][idx]
 
-    # calculate FDR / adjusted p-values
-    adj_p_val = calc_fdr(output_final[4] == "real")
-    output_final.append(adj_p_val)
+    for int_col in (1, 2, -3, -4, -5):
+        output_final[int_col] = output_final[int_col].astype("int")
 
-    output_final[1] = output_final[1].astype("int")
-    output_final[2] = output_final[2].astype("int")
+    # calculate FDR / adjusted p-values
+    adj_p_val = calc_fdr(output_final[6] == "real")
+    output_final.append(adj_p_val)
 
     if not debug:
         # remove permuted values and datatype array
-        filter_datatype = output_final[4] == "real"
+        filter_datatype = output_final[6] == "real"
         for column in range(len(output_final)):
             output_final[column] = output_final[column][filter_datatype]
-        del output_final[4]
+        del output_final[6]
 
         differential = np.count_nonzero(output_final[5] < 0.05)
         echo(
