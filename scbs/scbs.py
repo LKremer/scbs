@@ -97,7 +97,16 @@ def _move_windows(
     return windows, smoothed_var
 
 
-def scan(data_dir, output, bandwidth, stepsize, var_threshold, min_cells, threads=-1):
+def scan(
+    data_dir,
+    output,
+    bandwidth,
+    stepsize,
+    var_threshold,
+    min_cells,
+    threads=-1,
+    write_header=False,
+):
     _check_data_dir(data_dir, assert_smoothed=True)
     if threads != -1:
         numba.set_num_threads(threads)
@@ -109,6 +118,9 @@ def scan(data_dir, output, bandwidth, stepsize, var_threshold, min_cells, thread
         key=lambda x: os.path.getsize(x),
         reverse=True,
     )
+
+    if write_header:
+        output.write("chromosome\tVMR_start\tVMR_end\tvariance\tn_sites\tn_cells\n")
 
     # the variance threshold will be determined based on the largest chromosome.
     # by default, we take the 98th percentile of all window variances.

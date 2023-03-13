@@ -357,6 +357,11 @@ def smooth_cli(**kwargs):
     help="How many CPU threads to use in parallel.  [default: all available]",
     callback=_set_n_threads,
 )
+@click.option(
+    "--write-header",
+    is_flag=True,
+    help="Write the column names of the output file.  [default: off]",
+)
 def scan_cli(**kwargs):
     from .scbs import scan
 
@@ -445,6 +450,11 @@ def scan_cli(**kwargs):
     default=-1,
     help="How many CPU threads to use in parallel.  [default: all available]",
     callback=_set_n_threads,
+)
+@click.option(
+    "--write-header",
+    is_flag=True,
+    help="Write the column names of the output file.  [default: off]",
 )
 @click.option(
     "--debug",

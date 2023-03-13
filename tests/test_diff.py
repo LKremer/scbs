@@ -52,8 +52,14 @@ def test_diff_cli(tmp_path):
     assert dmr[1].sum() == 31250980767
     assert dmr[2].sum() == 31252060767
     assert dmr[3].sum() == -165.62208458348474
-    assert dmr[12].sum() == 190.7695160624927
-    assert len(dmr[dmr[6] == "neuroblast"]) == 284
+    assert dmr[11].sum() == 190.7695160624927
+    assert len(dmr[dmr[9] == "neuroblast"]) == 284
     assert dmr[0][493] == 9
     assert dmr[2][135] == 58035292
-    assert dmr[6][237] == "neuroblast"
+    assert dmr[9][237] == "neuroblast"
+    assert np.all(dmr[1] < dmr[2])
+    assert np.all(dmr[4] > 0)
+    assert np.all(dmr[5] >= 3)  # --min-cells
+    assert np.all(dmr[6] >= 3)
+    assert np.all(dmr[7] >= 0) and np.all(dmr[7] <= 1)
+    assert np.all(dmr[8] >= 0) and np.all(dmr[8] <= 1)

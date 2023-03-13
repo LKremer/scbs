@@ -43,14 +43,11 @@ def calc_fdr(datatype):
     fdisc = 0
     tdisc = 0
     adj_p_val_arr = np.empty(datatype.shape, dtype=np.float64)
-
     for i in range(len(datatype)):
         if datatype[i]:
             tdisc += 1
-
         else:
             fdisc += 1
-
         adj_p_val = fdisc / (fdisc + tdisc)
         adj_p_val_arr[i] = adj_p_val
     return adj_p_val_arr
@@ -281,20 +278,21 @@ def calc_tstat_peaks(
             )
             p = 2 * (1 - t.cdf(x=abs(t_stat), df=df))  # raw two-tailed p-value
 
+            # output columns (adjusted p-value appended later:)
             datapoints = [
-                chrom,
-                ps,
-                pe,
-                t_stat,
-                df,
-                p,
-                datatype,
-                group_name,
-                n_cpg,
-                n_cells_g1,
-                n_cells_g2,
-                g1_mfrac,
-                g2_mfrac,
+                chrom,  # chromosome
+                ps,  # start position
+                pe,  # end position
+                t_stat,  # t-statistic
+                n_cpg,  # total number of methylation sites in region
+                n_cells_g1,  # number of group1-cells with coverage
+                n_cells_g2,  # number of group2-cells with coverage
+                g1_mfrac,  # methylation fraction of cells in group 1
+                g2_mfrac,  # methylation fraction of cells in group 2
+                group_name,  # label of the group with lower methylation
+                df,  # degrees of freedom according to Welch-Satterthwaite equation
+                datatype,  # was the DMR found in a permutation or not?
+                p,  # raw p-value
             ]
 
             for datapoint in range(len(datapoints)):
@@ -368,6 +366,7 @@ def diff(
     threshold,
     min_cells,
     threads=-1,
+    write_header=False,
     debug=False,
 ):
     _check_data_dir(data_dir, assert_smoothed=True)
@@ -529,24 +528,38 @@ def diff(
     for column in range(len(output_final)):
         output_final[column] = output_final[column][idx]
 
-    for int_col in (1, 2, -3, -4, -5):
+    for int_col in (1, 2, 4, 5, 6):
         output_final[int_col] = output_final[int_col].astype("int")
 
     # calculate FDR / adjusted p-values
-    adj_p_val = calc_fdr(output_final[6] == "real")
+    adj_p_val = calc_fdr(output_final[11] == "real")
     output_final.append(adj_p_val)
 
     if not debug:
-        # remove permuted values and datatype array
-        filter_datatype = output_final[6] == "real"
+        # remove DMRs from permutations, and remove "df" and "datatype" column
+        is_from_permutation = output_final[11] == "real"
         for column in range(len(output_final)):
-            output_final[column] = output_final[column][filter_datatype]
-        del output_final[6]
+            output_final[column] = output_final[column][is_from_permutation]
+        del output_final[11]  # datatype (labels DMRs from permutation)
+        del output_final[10]  # degrees of freedom
 
-        differential = np.count_nonzero(output_final[5] < 0.05)
+        n_sig = np.count_nonzero(output_final[-1] < 0.05)
         echo(
-            f"found {differential} significant differentially methylated regions "
+            f"found {n_sig} significant differentially methylated regions "
             f"at a significance level of 0.05"
         )
     echo(f"Writing DMRs to {_get_filepath(output)}")
-    np.savetxt(output, np.transpose(output_final), delimiter="\t", fmt="%s")
+
+    header = ""
+    if write_header:
+        header = (
+            "chromosome\tDMR_start\tDMR_end\tt_statistic\tn_sites\t"
+            "n_cells_group1\tn_cells_group2\tmeth_frac_group1\tmeth_frac_group2\t"
+            "low_group_label\tdegrees_of_freedom\tsource\tp\tadjusted_p"
+        )
+        if not debug:
+            header = header.replace("degrees_of_freedom\tsource\t", "")
+
+    np.savetxt(
+        output, np.transpose(output_final), delimiter="\t", fmt="%s", header=header
+    )
