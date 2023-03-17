@@ -10,15 +10,8 @@ repos:
         name: black
         entry: poetry run black scbs
 
-  - repo: https://github.com/timothycrosley/isort
-    rev: 5.10.1
+  - repo: https://github.com/charliermarsh/ruff-pre-commit
+    rev: "v0.0.256"
     hooks:
-      - id: isort
-        name: isort
-        exclude: "benchmarks"
-
-  - repo: https://gitlab.com/pycqa/flake8
-    rev: 4.0.1
-    hooks:
-      - id: flake8
+      - id: ruff
         exclude: "benchmarks"
