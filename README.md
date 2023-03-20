@@ -1,3 +1,7 @@
+[![PyPI](https://img.shields.io/pypi/v/scbs?logo=PyPI)](https://pypi.org/project/scbs)
+[![PyPIDownloads](https://pepy.tech/badge/scbs)](https://pepy.tech/project/scbs)
+[![Stars](https://img.shields.io/github/stars/LKremer/scbs?logo=GitHub&color=yellow)](https://github.com/LKremer/scbs/stargazers)
+
 # `scbs`: A Command Line Tool for the Analysis of Single-Cell Bisulfite-Sequencing Data
 
 ## Installation
@@ -32,7 +36,11 @@ Also make sure to read the help by typing `scbs --help` or by checking [this pag
 `scbs` takes as input a number of single-cell methylation files and allows you to quickly and easily obtain a cell × region matrix for downstream analysis.
 It also facilitates quality control, allows you to discover variably methylated regions (VMRs), accurately quantifies methylation in genomic intervals, and stores your sc-methylomes in an efficient manner.
 
-![schematic showing the capabilities of scbs](docs/Fig_workflow.png)
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/Fig_workflow2.png">
+  <source media="(prefers-color-scheme: light)" srcset="docs/Fig_workflow.png">
+  <img alt="schematic showing the capabilities of scbs.">
+</picture>
 
 You can find a list of the available `scbs` commands [here](docs/commands.md).
 
