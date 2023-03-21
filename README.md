@@ -6,7 +6,7 @@
 
 ## Installation
 
-This software requires a working installation of [Python 3](https://www.python.org/downloads/) is used by executing commands in a shell terminal.
+This software requires a working installation of [Python 3](https://www.python.org/downloads/) and requires the use of a shell terminal.
 It was extensively tested on Ubuntu and MacOS, and briefly tested on Windows 10.
 
 You can install `scbs` from the Python package index as follows:
