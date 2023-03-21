@@ -6,12 +6,16 @@
 
 ## Installation
 
+This software requires a working installation of [Python 3](https://www.python.org/downloads/) is used by executing commands in a shell terminal.
+It was extensively tested on Ubuntu and MacOS, and briefly tested on Windows 10.
+
 You can install `scbs` from the Python package index as follows:
 ```
 python3 -m pip install --upgrade pip  # you need a recent pip version
 python3 -m pip install scbs
 ```
-Then restart your terminal. The installation is now finished and the command line interface should now be available when typing the command `scbs` in your terminal.
+Installation of `scbs` should take no longer than a few seconds. All required [dependencies](pyproject.toml) are automatically installed, this may take a few minutes.
+Afterwards, restart your terminal. The installation is now finished and the command line interface should now be available when typing the command `scbs` in your terminal.
 If this is not the case, check the "troubleshooting" section below.  
 
 
@@ -26,15 +30,16 @@ scbs --version
 ```
 
 ## [Tutorial](docs/tutorial.md) of a typical `scbs` run
-A tutorial can be found [here](docs/tutorial.md).
+A tutorial can be found [here](docs/tutorial.md). This gives instructions on how to use `scbs` on a small example data set which we provide.
 
 Also make sure to read the help by typing `scbs --help` or by checking [this page](docs/commands.md).
 
 
 ## What can this package do?
 
-`scbs` takes as input a number of single-cell methylation files and allows you to quickly and easily obtain a cell × region matrix for downstream analysis.
+`scbs` takes as input a number of single-cell methylation files and allows you to quickly and easily obtain a cell × region matrix for downstream analysis (e.g. PCA, UMAP or clustering).
 It also facilitates quality control, allows you to discover variably methylated regions (VMRs), accurately quantifies methylation in genomic intervals, and stores your sc-methylomes in an efficient manner.
+Lastly, you can also select two cell populations and identify differentially methylated regions (DMRs) between them.
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="docs/Fig_workflow2.png">
@@ -52,7 +57,6 @@ For a detailed explanation of the methods implemented in `scbs`, please check ou
 *Analyzing single-cell bisulfite sequencing data with scbs*  
 Lukas PM Kremer, Leonie Kuechenhoff, Santiago Cerrizuela, Ana Martin-Villalba, Simon Anders  
 bioRxiv 2022.06.15.496318; doi: [https://doi.org/10.1101/2022.06.15.496318](https://doi.org/10.1101/2022.06.15.496318)
-
 
 
 ## Troubleshooting
