@@ -1,0 +1,310 @@
+---
+title: "21-12-02_scNMT-runMOFA2.Rmd"
+author: "Lukas"
+date: "12/02/2021"
+output: html_document
+---
+
+```{r}
+library(tidyverse)
+library(MOFA2)
+library(ggrepel)
+library(data.table)
+
+'%notin%' <- Negate('%in%')  # opposite of %in%
+
+reticulate::use_python("/usr/bin/python3", required=T)
+```
+
+```{r}
+# filter out cells that are clearly off-targets, according to later integration with a larger scRNA-seq dataset
+celltype_df <- read_tsv("/mnt/o_drive/Lukas/20-11-03_scNMT-SVZ2/analysis/21-12-01_scNMT-celltypes-IfnWT-transfered.tsv.gz")
+
+target_cells <- celltype_df %>% 
+  dplyr::filter(celltype %notin% c("ependymal cell", "OEC")) %>% 
+  dplyr::filter(sample %notin% c("STRASTRO-B12 pE", "OLIGO9 pC", "NB1 pB", "NB11 pB")) %>%  # other manually identified off-target cells
+  pull(sample) %>% unique()
+```
+
+
+define function to load and filter epigenomic data
+```{r}
+prepare_mofa_input <- function(data, na_threshold_region, na_threshold_cell, topX=Inf, view="meth", center_cells=FALSE) {
+
+  #n_regions_total <- data %>% distinct(region) %>% pull() %>% length()
+  n_cells_total <- data %>% distinct(cell_name) %>% pull() %>% length()
+  
+  # filter regions that were only observed by few cells
+  mofa_input <- data %>%
+    mutate(n_cells_rel = n_cells / n_cells_total) %>% 
+    filter(n_cells_rel >= (1 - na_threshold_region))
+
+  n_region_after_filter <- length(unique(mofa_input$region))
+
+  mofa_input <- mofa_input %>%
+    # filter cells with few observed regions
+    group_by(cell_name) %>% 
+    mutate(n_obs_regions_rel = n() / n_region_after_filter) %>% 
+    ungroup() %>%
+    filter(n_obs_regions_rel >= (1 - na_threshold_cell))
+
+  if (center_cells) {
+    mofa_input <- mofa_input %>%
+      # subtract mean accessibility per cell (technical variation)
+      # filter cells with few observed regions
+      group_by(cell_name) %>% 
+      mutate(shrunken_residual = shrunken_residual - mean(shrunken_residual, na.rm=T)) %>% 
+      mutate(shrunken_residual = shrunken_residual / sd(shrunken_residual, na.rm=T)) %>% 
+      ungroup()    
+  }
+
+  top_regions <- mofa_input %>% 
+    distinct(region, bed_col4) %>% 
+    arrange(desc(bed_col4)) %>% 
+    head(topX) %>%
+    pull(region)
+  
+  mofa_input <- mofa_input %>% 
+    filter(region %in% top_regions) %>% 
+    # center and scale the features
+    group_by(region) %>% 
+    mutate(shrunken_residual = shrunken_residual - mean(shrunken_residual, na.rm=T)) %>% 
+    mutate(shrunken_residual = shrunken_residual / sd(shrunken_residual, na.rm=T)) %>% 
+    ungroup() %>%
+    mutate(view = view) %>% 
+    dplyr::select(sample=cell_name, feature=region, view, value=shrunken_residual) %>% 
+    as.data.frame()
+  
+  mofa_input
+}
+```
+
+```{r}
+cpg_stats <- read_csv("/mnt/o_drive/Lukas/20-11-03_scNMT-SVZ2/DNA/05_sparse-matrix/CpG_filtered/cell_stats.csv", col_types = "ciin") %>%
+  mutate(cell_name = str_remove(cell_name, "_R1R2_dedup.NOMe.CpG"))
+
+gpc_stats <- read_csv("/mnt/o_drive/Lukas/20-11-03_scNMT-SVZ2/DNA/05_sparse-matrix/GpC_filtered/cell_stats.csv", col_types = "ciin") %>%
+  mutate(cell_name = str_remove(cell_name, "_R1R2_dedup.NOMe.GpC"))
+
+meta <- read_tsv("/mnt/o_drive/Lukas/20-11-03_scNMT-SVZ2/21-06-30_scNMT-1k-cells-RNA-DNA-merged-meta.tsv",
+                 col_types = "ccDccicccccDccilc") %>%
+  left_join(full_join(cpg_stats, gpc_stats, by="cell_name", suffix=c("_cpg", "_gpc")), by=c("cell_id_dna"="cell_name"))
+
+rna_id_to_name <- meta %>%
+  dplyr::select(cell_id_rna, cell_name) %>% 
+  deframe()
+
+dna_id_to_name <- meta %>%
+  dplyr::select(cell_id_dna, cell_name) %>% 
+  deframe()
+```
+
+```{r}
+meta %>%
+  ggplot(aes(x = experiment, y = n_obs_cpg / 2e5, color = experiment)) +
+  ggbeeswarm::geom_quasirandom(size=.2) + 
+  scale_color_brewer(palette = "Set1") +
+  labs(y="approximate CpG coverage (%)")
+```
+
+# Load data of the three modalities
+
+## Load the mRNA portion of the data
+```{r}
+rna_annot <- "/mnt/o_drive/Lukas/20-11-03_scNMT-SVZ2/RNA/03_analysis/21-07-02_integrated-SCT-residuals-seurat-annot.tsv" %>% 
+  read_tsv() %>% 
+  mutate(cell_name = unname(rna_id_to_name[cell_id_rna]))
+
+gene_id_to_symbol <- "/mnt/o_drive/Lukas/resources/id_maps/mm10ensembl102_gene-id_to_gene-symbol.tsv.gz" %>% 
+  read_tsv(col_names = c("gene_id", "gene_symbol"), col_types = "cc") %>% 
+  deframe()
+
+mofa_input_rna <- fread("/mnt/o_drive/Lukas/20-11-03_scNMT-SVZ2/RNA/03_analysis/21-07-02_integrated-SCT-residuals-seurat-3kgenes.csv.gz", sep=",") %>%
+  magrittr::set_colnames(unname(gene_id_to_symbol[colnames(.)])) %>% 
+  mutate(cell_name = unname(rna_id_to_name[V1])) %>% 
+  dplyr::select(-V1) %>% 
+  pivot_longer(-cell_name, names_to = "feature", values_to = "value") %>% 
+  mutate(view = "RNA") %>%
+  dplyr::select(sample=cell_name, feature, view, value) %>% 
+  as.data.frame()
+
+mofa_input_rna
+```
+
+
+
+## Load the CpG-methylation portion of the data  
+First, methylation-variable regions
+```{r}
+MATRIX_PATH_CPG = "/mnt/o_drive/Lukas/20-11-03_scNMT-SVZ2/DNA/07_matrix/CpG_filtered-varRegions_0.02_2000bw_10step_blacklist_matrix.csv.gz"
+NA_THRESHOLD_REGION_CPG = 0.8  # 0.6667  # maximum allowed fraction of missing values for each region
+NA_THRESHOLD_CELL_CPG = 0.95  # maximum allowed fraction of missing values for each cell (note that this threshold is applied after regions were filtered)
+
+mofa_input_meth <- MATRIX_PATH_CPG %>% 
+  fread(sep=",") %>% 
+  mutate(width = end-start) %>% 
+  unite("region", chromosome, start, end) %>% 
+  prepare_mofa_input(
+    NA_THRESHOLD_REGION_CPG,
+    NA_THRESHOLD_CELL_CPG,
+    topX = Inf,
+    view = "meth",
+    center_cells = TRUE) %>%
+  mutate(sample = str_remove(sample, "_R1R2_dedup.NOMe.CpG")) %>%
+  mutate(sample = dna_id_to_name[sample]) #%>%
+  #mutate(value = -value)  # invert methylation data to make it more interpretable
+
+mofa_input_meth
+```
+
+```{r}
+glue::glue("number of features:\t{mofa_input_meth %>% distinct(feature) %>% nrow()}\nnumber of cells:\t{mofa_input_meth %>% distinct(sample) %>% nrow()}")
+```
+
+Now promoter methylation
+```{r}
+MATRIX_PATH_CPG = "/mnt/o_drive/Lukas/20-11-03_scNMT-SVZ2/DNA/07_matrix/CpG_filtered-mm10_promoter_matrix.csv.gz"
+
+mofa_input_meth_promoter <- MATRIX_PATH_CPG %>% 
+  fread(sep=",") %>% 
+  mutate(width = end-start, bed_col4=NA) %>% 
+  unite("region", chromosome, start, end) %>%
+  prepare_mofa_input(
+    Inf,
+    Inf,
+    topX = Inf,
+    view = "promoter meth",
+    center_cells = TRUE) %>%
+  mutate(sample = str_remove(sample, "_R1R2_dedup.NOMe.CpG")) %>%
+  mutate(sample = dna_id_to_name[sample]) #%>%
+  #mutate(value = -value)  # invert methylation data to make it more interpretable
+
+mofa_input_meth_promoter
+```
+
+```{r}
+glue::glue("number of features:\t{mofa_input_meth_promoter %>% distinct(feature) %>% nrow()}\nnumber of cells:\t{mofa_input_meth_promoter %>% distinct(sample) %>% nrow()}")
+```
+
+
+
+
+## Load the chromatin accessibility (GpC-methylation) portion of the data  
+First, accessibility-variable regions
+```{r}
+MATRIX_PATH_GPC = "/mnt/o_drive/Lukas/20-11-03_scNMT-SVZ2/DNA/07_matrix/GpC_filtered-varRegions_0.02_1000bw_10step_blacklist_matrix.csv.gz"
+NA_THRESHOLD_REGION_GPC = 0.6 #0.6667  # maximum allowed fraction of missing values for each region
+NA_THRESHOLD_CELL_GPC = 0.95  # maximum allowed fraction of missing values for each cell (note that this threshold is applied after regions were filtered)
+
+mofa_input_acc <- MATRIX_PATH_GPC %>% 
+  read_csv(na="nan", col_types = "ciiiiciinnn") %>% 
+  mutate(width = end-start) %>% 
+  unite("region", chromosome, start, end) %>% 
+  prepare_mofa_input(
+    NA_THRESHOLD_REGION_GPC,
+    NA_THRESHOLD_CELL_GPC,
+    topX = Inf,
+    view = "acc",
+    center_cells = TRUE) %>%
+  mutate(sample = str_remove(sample, "_R1R2_dedup.NOMe.GpC")) %>%
+  mutate(sample = dna_id_to_name[sample])
+
+mofa_input_acc
+```
+
+```{r}
+glue::glue("number of features:\t{mofa_input_acc %>% distinct(feature) %>% nrow()}\nnumber of cells:\t{mofa_input_acc %>% distinct(sample) %>% nrow()}")
+```
+
+Now promoter accessibility
+```{r}
+MATRIX_PATH_GPC = "/mnt/o_drive/Lukas/20-11-03_scNMT-SVZ2/DNA/07_matrix/GpC_filtered-mm10_promoter_matrix.csv.gz"
+
+mofa_input_acc_promoter <- MATRIX_PATH_GPC %>% 
+  read_csv(na="nan", col_types = "ciiiiciinn") %>% 
+  mutate(width = end-start, bed_col4=NA) %>% 
+  unite("region", chromosome, start, end) %>% 
+  prepare_mofa_input(
+    Inf,
+    Inf,
+    topX = Inf,
+    view = "promoter acc",
+    center_cells = TRUE) %>%
+  mutate(sample = str_remove(sample, "_R1R2_dedup.NOMe.GpC")) %>%
+  mutate(sample = dna_id_to_name[sample])
+
+mofa_input_acc_promoter
+```
+
+```{r}
+glue::glue("number of features:\t{mofa_input_acc_promoter %>% distinct(feature) %>% nrow()}\nnumber of cells:\t{mofa_input_acc_promoter %>% distinct(sample) %>% nrow()}")
+```
+
+
+# run MOFA+
+```{r}
+mofa_input <- bind_rows(
+  mofa_input_rna,
+  mofa_input_meth,
+  mofa_input_acc,
+  mofa_input_meth_promoter,
+  mofa_input_acc_promoter
+)
+```
+
+Number of cells per modality:
+```{r}
+mofa_input %>%
+  distinct(view, sample) %>% 
+  group_by(view) %>% 
+  tally()
+```
+
+Number of features (genes or regions) per modality:
+```{r}
+mofa_input %>%
+  distinct(view, feature) %>% 
+  group_by(view) %>% 
+  tally()
+```
+
+Number of features (genes or regions) per modality per cell:
+```{r}
+n_feats <- mofa_input %>%
+  distinct(sample, view, feature) %>% 
+  group_by(sample, view) %>% 
+  tally() %>% 
+  ungroup() %>% 
+  pivot_wider(everything(), names_from=view, values_from=n, names_prefix="n_features_")
+
+cells_with_dna_and_rna <- n_feats %>%
+  filter(!is.na(n_features_acc) & !is.na(n_features_meth) & !is.na(n_features_RNA)) %>%
+  pull(sample) %>%
+  unique()
+
+cells_to_keep <- intersect(target_cells, cells_with_dna_and_rna)
+```
+
+
+
+# Run MOFA+ on all modalities
+```{r}
+MOFAobject <- mofa_input %>%
+  filter(sample %in% cells_to_keep) %>% 
+  MOFA2::create_mofa()
+
+train_opt <- MOFA2::get_default_training_options(MOFAobject)
+train_opt["outfile"] <- "/home/rstudio/tmp/21-12-01_MOFA2-HQcells-rna-meth-acc.h5"
+train_opt["drop_factor_threshold"] <- -1  # no dropping
+train_opt["maxiter"] <- 10000
+model_opt <- get_default_model_options(MOFAobject)
+model_opt$num_factors <- 15
+MOFAobject <- MOFA2::prepare_mofa(MOFAobject, training_options = train_opt, model_options = model_opt)
+
+plot_data_overview(MOFAobject)
+```
+
+```{r}
+MOFAobject <- MOFA2::run_mofa(MOFAobject)
+```
+
