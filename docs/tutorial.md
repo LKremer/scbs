@@ -1,5 +1,9 @@
 # Tutorial
 
+This tutorial will show you how to use `scbs` on a small example data set that we provide.
+The overall run time is no longer than 2-5 minutes.
+
+
 ## Usage principles
 
 `scbs` provides a number of commands.
