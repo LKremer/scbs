@@ -54,47 +54,11 @@ def calc_fdr(datatype):
 
 
 @njit(nogil=True)
-def welch_t_test(group1, group2, min_cells):
+def calc_welch_tstat_df(group1, group2, min_cells):
     """
-    calculates the t-statistic according to Welch's t-test for unequal variances
-    """
-    len_g1 = len(group1)
-    if len_g1 < min_cells:
-        return np.nan
-    len_g2 = len(group2)
-    if len_g2 < min_cells:
-        return np.nan
-
-    mean_g1 = np.mean(group1)
-    mean_g2 = np.mean(group2)
-
-    sum1 = 0.0
-    sum2 = 0.0
-
-    for value in group1:
-        sqdif1 = (value - mean_g1) ** 2
-        sum1 += sqdif1
-
-    for value in group2:
-        sqdif2 = (value - mean_g2) ** 2
-        sum2 += sqdif2
-
-    if sum1 == 0.0 and sum2 == 0.0:
-        return np.nan
-
-    var_g1 = sum1 / (len_g1 - 1)
-    var_g2 = sum2 / (len_g2 - 1)
-
-    s_delta = math.sqrt(var_g1 / len_g1 + var_g2 / len_g2)
-    t = (mean_g1 - mean_g2) / s_delta
-    return t
-
-
-@njit(nogil=True)
-def welch_t_test_df(group1, group2, min_cells):
-    """
-    calculates the t-statistic and the degrees of freedom according to Welch's
-    t-test for unequal variances. todo: somehow merge with welch_t_test()
+    Calculates the t-statistic and the degrees of freedom (df) according to Welch's
+    t-test for unequal variances.
+    Returns the t-statistic, df, and the two group sizes.
     """
     len_g1 = len(group1)
     len_g2 = len(group2)
@@ -133,6 +97,46 @@ def welch_t_test_df(group1, group2, min_cells):
     )
     df = numerator / denominator
     return t, df, len_g1, len_g2
+
+
+@njit(nogil=True)
+def calc_welch_tstat(group1, group2, min_cells):
+    """
+    Calculates the t-statistic according to Welch's t-test for unequal variances.
+    Mostly copy-paste from calc_welch_tstat_df, this is ugly but gives a slight edge
+    in performance.
+    Returns the t-statistic, df, and the two group sizes.
+    """
+    len_g1 = len(group1)
+    if len_g1 < min_cells:
+        return np.nan
+    len_g2 = len(group2)
+    if len_g2 < min_cells:
+        return np.nan
+
+    mean_g1 = np.mean(group1)
+    mean_g2 = np.mean(group2)
+
+    sum1 = 0.0
+    sum2 = 0.0
+
+    for value in group1:
+        sqdif1 = (value - mean_g1) ** 2
+        sum1 += sqdif1
+
+    for value in group2:
+        sqdif2 = (value - mean_g2) ** 2
+        sum2 += sqdif2
+
+    if sum1 == 0.0 and sum2 == 0.0:
+        return np.nan
+
+    var_g1 = sum1 / (len_g1 - 1)
+    var_g2 = sum2 / (len_g2 - 1)
+
+    s_delta = math.sqrt(var_g1 / len_g1 + var_g2 / len_g2)
+    t = (mean_g1 - mean_g2) / s_delta
+    return t
 
 
 @njit(parallel=True)
@@ -194,7 +198,7 @@ def _move_windows(
             group2 = mean_shrunk_resid[index[1, chrom_bin]]
             group2 = group2[~np.isnan(group2)]
 
-        t = welch_t_test(group1, group2, min_cells)
+        t = calc_welch_tstat(group1, group2, min_cells)
         t_array[i] = t
 
     return windows, t_array
@@ -273,7 +277,7 @@ def calc_tstat_peaks(
                 g1_mfrac = np.nanmean(mfracs[index[0, chrom_bin]])
                 g2_mfrac = np.nanmean(mfracs[index[1, chrom_bin]])
 
-            t_stat, df, n_cells_g1, n_cells_g2 = welch_t_test_df(
+            t_stat, df, n_cells_g1, n_cells_g2 = calc_welch_tstat_df(
                 group1, group2, min_cells
             )
             p = 2 * (1 - t.cdf(x=abs(t_stat), df=df))  # raw two-tailed p-value

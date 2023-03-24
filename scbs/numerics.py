@@ -74,8 +74,8 @@ def _calc_mean_shrunken_residuals_and_mfracs(
     shrinkage_factor=1,
 ):
     """
-    also reports the methylation % of each cell. todo: merge somehow with
-    _calc_mean_shrunken_residuals
+    A copy of _calc_mean_shrunken_residuals() that also returns the average methylation
+    of both cell groups. The function exists twice for performance reasons.
     """
     shrunken_resid = np.full(n_cells, np.nan)
     if start > chrom_len:

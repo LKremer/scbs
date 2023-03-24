@@ -1,6 +1,7 @@
 import os
 from csv import DictReader
 from glob import glob
+from datetime import datetime
 
 import scipy.sparse as sp_sparse
 
@@ -92,6 +93,22 @@ def _check_cell_number(n, n_before):
         )
 
 
+def _copy_log(original_path, copy_path, n_cells_postfilter, n_cells_prefilter):
+    content = "run_info.txt was missing before calling scbs filter...\n\n\n"
+    if os.path.isfile(original_path):
+        with open(original_path, "r") as infile:
+            content = infile.read() + "\n\n\n"
+    with open(copy_path, "w") as outfile:
+        now = datetime.now()
+        n_filtered = n_cells_prefilter - n_cells_postfilter
+        content += (
+            f"---------- {now.strftime('%a %b %d %H:%M:%S %Y')} ----------"
+            f"\n{n_filtered} of {n_cells_prefilter} cells were discarded "
+            "with scbs filter.\n"
+        )
+        outfile.write(content)
+
+
 def filter_(
     data_dir, filtered_dir, min_sites, max_sites, min_meth, max_meth, cell_names, keep
 ):
@@ -100,6 +117,8 @@ def filter_(
     stats_path_out = os.path.join(filtered_dir, "cell_stats.csv")
     colname_path = os.path.join(data_dir, "column_header.txt")
     colname_path_out = os.path.join(filtered_dir, "column_header.txt")
+    log_path = os.path.join(data_dir, "run_info.txt")
+    log_path_out = os.path.join(filtered_dir, "run_info.txt")
     if cell_names:
         if any([min_sites, max_sites, min_meth, max_meth]):
             secho(
@@ -135,3 +154,4 @@ def filter_(
 
     _filter_text_file(stats_path, cell_idx, stats_path_out, header=True)
     _filter_text_file(colname_path, cell_idx, colname_path_out, header=False)
+    _copy_log(log_path, log_path_out, len(cell_idx), n_cells_prefilter)

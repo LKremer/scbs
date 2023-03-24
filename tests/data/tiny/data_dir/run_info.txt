@@ -1,0 +1,21 @@
+This directory was generated on Fri Mar 24 20:54:16 2023
+with scbs prepare version 0.6.1.
+The total runtime was 0:00:00 (hour:min:s).
+
+The following parameters were used:
+
+data_dir:
+data_dir2
+
+input_format:
+bismark
+
+round_sites:
+False
+
+chunksize:
+10000000
+
+input_files:
+<_io.BufferedReader name='a.cov'>
+<_io.BufferedReader name='b.cov.gz'>

@@ -76,11 +76,23 @@ def _load_chrom_mat(data_dir, chrom):
     return mat
 
 
+def _check_if_file_exists(directory, file_name, required=False):
+    file_exists = os.path.isfile(os.path.join(directory, file_name))
+    if not file_exists:
+        if required:
+            raise Exception(f"{file_name} is missing from {directory}")
+        secho("Warning: ", fg="red", nl=False)
+        echo(f"{file_name} is missing from {directory}")
+    return file_exists
+
+
 def _check_data_dir(data_dir, assert_smoothed=False):
     """
     quickly peek into data_dir to make sure the user
     did not specify an empty directory
     """
+    _check_if_file_exists(data_dir, "column_header.txt", required=True)
+    _check_if_file_exists(data_dir, "cell_stats.csv")
     npz_files = glob(os.path.join(data_dir, "*.npz"))
     if not npz_files:
         raise Exception(

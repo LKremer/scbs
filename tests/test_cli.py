@@ -105,6 +105,8 @@ def test_filter_cli_threshold(tmp_path):
     with open(os.path.join(p, "cell_stats.csv")) as csv:
         assert csv.readline().startswith("cell_name,")
         assert csv.readline().startswith("b,")
+    with open(os.path.join(p, "run_info.txt")) as run_info:
+        assert "scbs prepare version" in run_info.read()
 
 
 def test_filter_cli_toostrict(tmp_path):
