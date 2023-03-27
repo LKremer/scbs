@@ -278,7 +278,8 @@ def filter_cli(**kwargs):
 @click.option(
     "--use-weights",
     is_flag=True,
-    help="Use this to weigh each methylation site by log1p(coverage).",
+    help="Use this to weigh each methylation site by log1p(coverage)."
+    "  [default: off]",
 )
 def smooth_cli(**kwargs):
     from .smooth import smooth
@@ -459,7 +460,8 @@ def scan_cli(**kwargs):
 @click.option(
     "--debug",
     is_flag=True,
-    help="Use this to to also report DMRs that were identified in permutations.",
+    help="Use this to also report DMRs that were identified in permutations.  "
+    "[default: off]",
 )
 def diff_cli(**kwargs):
     from .diff import diff
