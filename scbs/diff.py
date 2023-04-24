@@ -38,19 +38,27 @@ def permuted_indices(idx_celltypes, celltype_1, celltype_2, total_cells):
     return index_g1, index_g2
 
 
-@njit
-def calc_fdr(datatype):
-    fdisc = 0
+# @njit("float64(boolean)")
+def calc_fdr(bools):
+    """
+    Calculates an adjusted p-value for each DMR using the Benjamini-Hochberg method.
+    Input is an array of boolean values, where each value represents a DMR.
+    The array is sorted by absolute t-statistic and the boolean indicates whether the
+    the DMR was found in a permutation (False) or in the real comparison (True).
+    """
+    n_t = sum(bools)  # number of DMRs in the real comparison
+    n_t_null = len(bools) - n_t  # number of DMRs in the permutation
+    fdisc = 0  # number of false discoveries up until a certain threshold
     tdisc = 0
-    adj_p_val_arr = np.empty(datatype.shape, dtype=np.float64)
-    for i in range(len(datatype)):
-        if datatype[i]:
+    adj_p_vals = np.empty(bools.shape, dtype=np.float64)
+    for i in range(len(bools)):
+        if bools[i]:
             tdisc += 1
         else:
             fdisc += 1
-        adj_p_val = fdisc / (fdisc + tdisc)
-        adj_p_val_arr[i] = adj_p_val
-    return adj_p_val_arr
+        adj_p_val = (fdisc / n_t_null) / (tdisc / n_t)
+        adj_p_vals[i] = adj_p_val
+    return adj_p_vals
 
 
 @njit(nogil=True)
