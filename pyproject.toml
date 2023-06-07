@@ -4,8 +4,8 @@ version = "0.6.2"
 description = "command line tool for the analysis of single-cell bisulfite-sequencing data"
 authors = [
     "Lukas PM Kremer <L-Kremer@web.de>",
+    "Martina Braun <martina.braun@stud.uni-heidelberg.de>",
     "Leonie Küchenhoff <leonie.kuechenhoff@gmx.de>",
-    "Alexey Uvarovskii <a.uvarovskii@uni-heidelberg.de>",
     "Simon Anders <simon.anders@bioquant.uni-heidelberg.de>",
 ]
 maintainers = ["Lukas PM Kremer <L-Kremer@web.de>"]

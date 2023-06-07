@@ -7,7 +7,7 @@
 ## Installation
 
 This software requires a working installation of [Python 3](https://www.python.org/downloads/) and requires the use of a shell terminal.
-It was extensively tested on Ubuntu and MacOS, and briefly tested on Windows 10.
+It was extensively tested on Ubuntu Linux (18 and 20) and MacOS, and briefly tested on Windows 10.
 
 You can install `scbs` from the Python package index as follows:
 ```
@@ -57,6 +57,13 @@ For a detailed explanation of the methods implemented in `scbs`, please check ou
 *Analyzing single-cell bisulfite sequencing data with scbs*  
 Lukas PM Kremer, Leonie Kuechenhoff, Santiago Cerrizuela, Ana Martin-Villalba, Simon Anders  
 bioRxiv 2022.06.15.496318; doi: [https://doi.org/10.1101/2022.06.15.496318](https://doi.org/10.1101/2022.06.15.496318)
+
+
+## Hardware requirements
+
+It is recommended to use a computer with at least 16 gigabytes of RAM.
+When analyzing small data sets (< 500 cells) like the [tutorial](docs/tutorial.md) data set, 8 GB RAM should suffice.
+Multiple CPU cores are not required but will greatly speed up some commands such as `scbs scan`.
 
 
 ## Troubleshooting

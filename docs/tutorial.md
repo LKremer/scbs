@@ -2,6 +2,7 @@
 
 This tutorial will show you how to use `scbs` on a small example data set that we provide.
 The overall run time is no longer than 2-5 minutes.
+Hardware requirements for this tutorial are very low, this example analysis should run on any modern desktop computer or laptop.
 
 
 ## Usage principles
