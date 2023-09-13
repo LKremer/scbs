@@ -561,8 +561,8 @@ def diff(
 
         n_sig = np.count_nonzero(output_final[-1] < 0.05)
         secho(
-            f"found {n_sig} differentially methylated regions "
-            f"with an adjusted p-value below 0.05.",
+            f"\nFound {n_sig} differentially methylated regions "
+            "with an adjusted p-value below 0.05.\n",
             fg="green" if n_sig else "red",
         )
     echo(f"Writing DMRs to {_get_filepath(output)}")
