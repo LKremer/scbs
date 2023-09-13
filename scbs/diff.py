@@ -56,7 +56,11 @@ def calc_fdr(bools):
             tdisc += 1
         else:  # it's from the permutation
             fdisc += 1
-        adj_p_val = (fdisc / n_t_null) / (tdisc / n_t)
+        if tdisc:
+            adj_p_val = (fdisc / n_t_null) / (tdisc / n_t)
+        else:
+            # prevent div by 0 in the rare case that the best hit is from a permutation
+            adj_p_val = 1
         adj_p_vals[i] = adj_p_val
     return adj_p_vals
 
@@ -556,9 +560,10 @@ def diff(
         del output_final[10]  # degrees of freedom
 
         n_sig = np.count_nonzero(output_final[-1] < 0.05)
-        echo(
-            f"found {n_sig} significant differentially methylated regions "
-            f"at a significance level of 0.05"
+        secho(
+            f"found {n_sig} differentially methylated regions "
+            f"with an adjusted p-value below 0.05.",
+            fg="green" if n_sig else "red",
         )
     echo(f"Writing DMRs to {_get_filepath(output)}")
 
