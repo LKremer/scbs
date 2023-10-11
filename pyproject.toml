@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "scbs"
-version = "0.6.3"
+version = "0.6.4"
 description = "command line tool for the analysis of single-cell bisulfite-sequencing data"
 authors = [
     "Lukas PM Kremer <L-Kremer@web.de>",
@@ -20,7 +20,7 @@ classifiers = [
 ]
 
 [tool.poetry.dependencies]
-python = ">=3.8,<3.11"
+python = ">=3.8"
 click = ">=7.1.2,<8.1"
 numpy = ">=1.20.1,<2"
 scipy = ">=1.6.1,<2"
