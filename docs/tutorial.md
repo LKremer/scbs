@@ -72,6 +72,8 @@ This command will take all files ending in `.cov` in the `scbs_tutorial_data` di
 If you're working with your own data and you sequenced thousands of cells, `scbs prepare` will take quite long.
 But fortunately, you only have to run it once in the very beginning.
 
+> [!NOTE]  
+> If you encounter a "too many open files"-error, you need to increase the open file limit with e.g. `ulimit -n 99999`.
 
 ### 2. Filtering low-quality cells
 
