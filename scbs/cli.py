@@ -303,7 +303,9 @@ def smooth_cli(**kwargs):
     values produced by running 'scbs smooth'.
 
     {style("OUTPUT", fg="green")} is the path of the output file in '.bed' format,
-    containing the VMRs that were found.
+    containing the VMRs that were found. The output columns are: 
+    chromosome, VMR start, VMR end, variance, # of CpG sites, # of cells with
+    sequencing coverage in the VMR.
     """,
     short_help="Scan the genome to discover variably methylated regions",
     no_args_is_help=True,

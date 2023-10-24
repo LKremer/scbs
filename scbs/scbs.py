@@ -26,7 +26,7 @@ def _output_file_handle(raw_path):
 
 
 @njit
-def _find_peaks(smoothed_vars, swindow_centers, var_cutoff, half_bw):
+def _find_peaks(window_vars, window_starts, window_ends, var_cutoff, half_bw):
     """
     After we calculated the variance for each window, this function
     merges overlapping windows above a variance threshold (var_cutoff).
@@ -34,27 +34,27 @@ def _find_peaks(smoothed_vars, swindow_centers, var_cutoff, half_bw):
     """
     peak_starts = []
     peak_ends = []
-    prev_pos = 0
+    prev_end = 0
     in_peak = False
-    for var, pos in zip(smoothed_vars, swindow_centers):
+    for var, start, end in zip(window_vars, window_starts, window_ends):
         if var > var_cutoff:
             if not in_peak:
                 # entering new peak
                 in_peak = True
-                if peak_ends and pos - half_bw <= max(peak_ends):
+                if peak_ends and start <= max(peak_ends):
                     # it's not really a new peak, the last peak wasn't
                     # finished, there was just a small dip...
                     peak_ends.pop()
                 else:
-                    peak_starts.append(pos - half_bw)
+                    peak_starts.append(start)
         else:
             if in_peak:
                 # exiting peak
                 in_peak = False
-                peak_ends.append(prev_pos + half_bw)
-        prev_pos = pos
+                peak_ends.append(prev_end)
+        prev_end = end
     if in_peak:
-        peak_ends.append(pos)
+        peak_ends.append((end - start) // 2)
     assert len(peak_starts) == len(peak_ends)
     return peak_starts, peak_ends
 
@@ -79,22 +79,33 @@ def _move_windows(
     calculate the variance of shrunken residuals. This is our
     measure of methylation variability for that window.
     """
-    windows = np.arange(start, end, stepsize)
-    smoothed_var = np.empty(windows.shape, dtype=np.float64)
-    for i in prange(windows.shape[0]):
-        pos = windows[i]
+    cpg_bw = (2 * half_bw) + 1
+    cpg_positions = np.array(list(smoothed_vals.keys()))
+    window_starts = np.zeros(cpg_positions.size - cpg_bw, dtype=np.int64)
+    window_ends = np.zeros(cpg_positions.size - cpg_bw, dtype=np.int64)
+    for cpg_start_i in range(cpg_positions.size - cpg_bw):
+        cpg_end_i = cpg_start_i + cpg_bw
+        assert cpg_positions[cpg_start_i:cpg_end_i].size == cpg_bw
+        window_start = cpg_positions[cpg_start_i]
+        window_end = cpg_positions[cpg_end_i - 1]
+        assert window_end > window_start
+        window_starts[cpg_start_i] = window_start
+        window_ends[cpg_start_i] = window_end
+
+    smoothed_var = np.empty(window_starts.size, dtype=np.float64)
+    for i in prange(window_starts.size):
         mean_shrunk_resid = _calc_mean_shrunken_residuals(
             data_chrom,
             indices_chrom,
             indptr_chrom,
-            pos - half_bw,
-            pos + half_bw,
+            window_starts[i],
+            window_ends[i],
             smoothed_vals,
             n_cells,
             chrom_len,
         )
         smoothed_var[i] = np.nanvar(mean_shrunk_resid)
-    return windows, smoothed_var
+    return window_starts, window_ends, smoothed_var
 
 
 def scan(
@@ -140,7 +151,7 @@ def scan(
         # mean shrunken residuals for each window.
         start = cpg_pos_chrom[0] + half_bw + 1
         end = cpg_pos_chrom[-1] - half_bw - 1
-        genomic_positions, window_variances = _move_windows(
+        window_starts, window_ends, window_variances = _move_windows(
             start,
             end,
             stepsize,
@@ -161,7 +172,7 @@ def scan(
         # merge overlapping windows with high variance, to get bigger regions
         # of variable size
         peak_starts, peak_ends = _find_peaks(
-            window_variances, genomic_positions, var_threshold_value, half_bw
+            window_variances, window_starts, window_ends, var_threshold_value, half_bw
         )
 
         # for each big merged peak, re-calculate the variance and

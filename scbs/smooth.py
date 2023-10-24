@@ -30,7 +30,7 @@ class Smoother(object):
         self.weigh = weigh
         return
 
-    def smooth_whole_chrom(self):
+    def smooth_whole_chrom_FIXED_WINDOW_SIZE(self):
         smoothed = {}
         for i in self.cpg_pos:
             window = self.mfracs[i - self.hbw : i + self.hbw]
@@ -47,6 +47,27 @@ class Smoother(object):
                 # when the smoothing bandwith is out of bounds of
                 # the chromosome... needs fixing eventually
                 smoothed[i] = np.nan
+        return smoothed
+
+    def smooth_whole_chrom(self):
+        echo("Smoothing chrom using CpG bins!")
+        cpg_per_window = 2 * self.hbw + 1
+        smoothed = {}
+        for cpg_i, cpg_pos in enumerate(self.cpg_pos):
+            if cpg_i < self.hbw or cpg_i >= self.cpg_pos.size - self.hbw:
+                smoothed[cpg_pos] = np.nan
+                continue
+            # window_start = self.cpg_pos[cpg_i - self.hbw]
+            # window_end = self.cpg_pos[cpg_i + self.hbw]
+            cpg_pos_in_window = self.cpg_pos[cpg_i - self.hbw : cpg_i + self.hbw + 1]
+            window = self.mfracs[cpg_pos_in_window]
+            assert window.size == cpg_per_window
+            rel_dist = np.abs(
+                (cpg_pos_in_window - cpg_pos) / np.max(cpg_pos_in_window - cpg_pos)
+            )
+            kernel = (1 - (rel_dist ** 3)) ** 3
+            smooth_val = np.divide(np.sum(window * kernel), np.sum(kernel))
+            smoothed[cpg_pos] = smooth_val
         return smoothed
 
 
