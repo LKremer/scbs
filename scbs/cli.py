@@ -1,12 +1,18 @@
 from collections import OrderedDict
 from datetime import datetime, timedelta
+from glob import glob
 
 import click
 from click import style
 from click_help_colors import HelpColorsGroup
 
 from . import __version__
-from .utils import _get_filepath, echo
+from .utils import (
+    _get_filepath,
+    _check_if_file_exists,
+    _check_if_file_is_readable,
+    echo,
+)
 
 
 class Timer:
@@ -41,6 +47,15 @@ def _print_kwargs(kwargs):
             value_fmt = style(str(_get_filepath(value)), fg="blue")
             echo(f"{arg: >15}: {value_fmt}")
     echo()
+
+
+def _get_input_file_paths(file_arg):
+    if len(file_arg) == 1 and "*" in file_arg[0]:
+        file_arg = tuple(glob(file_arg[0]))
+    for file_path in file_arg:
+        _check_if_file_exists(".", file_path, required=True)
+        _check_if_file_is_readable(".", file_path, required=True)
+    return file_arg
 
 
 def _set_n_threads(ctx, param, value):
@@ -103,12 +118,12 @@ def cli():
 
     Note: If you have many cells and encounter a "too many open files"-
     error, you need to increase the open file limit with e.g.
-    'ulimit -n 9999'.
+    'ulimit -n 99999'.
     """,
     short_help="Collect and store sc-methylation data for quick access",
     no_args_is_help=True,
 )
-@click.argument("input-files", type=click.File("rb"), nargs=-1)
+@click.argument("input-files", nargs=-1)
 @click.argument(
     "data-dir",
     type=click.Path(dir_okay=True, file_okay=False, writable=True),
@@ -163,6 +178,7 @@ def prepare_cli(**kwargs):
     from .prepare import prepare
 
     timer = Timer(label="prepare")
+    kwargs["input_files"] = _get_input_file_paths(kwargs["input_files"])
     _print_kwargs(kwargs)
     prepare(**kwargs)
     timer.stop()

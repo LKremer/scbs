@@ -93,8 +93,8 @@ def _write_run_info(fpath, begin_time, **kwargs):
 def _get_cell_names(cov_files):
     """Use the file base names (without extension) as cell names."""
     names = []
-    for file_handle in cov_files:
-        name = os.path.basename(file_handle.name)
+    for file_path in cov_files:
+        name = os.path.basename(file_path)
         if name.lower().endswith(".gz"):
             # remove .gz
             name = name[:-3]
@@ -359,38 +359,39 @@ def _iterate_covfile(
     cov_file, c_col, p_col, m_col, u_col, coverage, onlyrel, sep, header
 ):
     try:
-        if cov_file.name.lower().endswith(".gz"):
+        if cov_file.lower().endswith(".gz"):
             # handle gzip-compressed file
-            lines = gzip.decompress(cov_file.read()).decode().strip().split("\n")
-            if header:
-                lines = lines[1:]
-            for line in lines:
-                yield _line_to_values(
-                    line.strip().split(sep),
-                    c_col,
-                    p_col,
-                    m_col,
-                    u_col,
-                    coverage,
-                    onlyrel,
-                )
+            with gzip.open(cov_file, "rb") as lines:
+                if header:
+                    lines.readline()
+                for line in lines:
+                    yield _line_to_values(
+                        line.decode().strip().split(sep),
+                        c_col,
+                        p_col,
+                        m_col,
+                        u_col,
+                        coverage,
+                        onlyrel,
+                    )
         else:
             # handle uncompressed file
-            if header:
-                _ = cov_file.readline()
-            for line in cov_file:
-                yield _line_to_values(
-                    line.decode().strip().split(sep),
-                    c_col,
-                    p_col,
-                    m_col,
-                    u_col,
-                    coverage,
-                    onlyrel,
-                )
+            with open(cov_file, "r") as lines:
+                if header:
+                    lines.readline()
+                for line in lines:
+                    yield _line_to_values(
+                        line.strip().split(sep),
+                        c_col,
+                        p_col,
+                        m_col,
+                        u_col,
+                        coverage,
+                        onlyrel,
+                    )
     # we add the name of the file which caused the crash so that the user can fix it
     except Exception as exc:
-        raise type(exc)(f"{exc} (in file: {cov_file.name})").with_traceback(
+        raise type(exc)(f"{exc} (in file: {cov_file})").with_traceback(
             sys.exc_info()[2]
         )
 

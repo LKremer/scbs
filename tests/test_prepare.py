@@ -69,6 +69,29 @@ def test_prepare_rounded_cli(tmp_path):
     assert mat[3, 0] == 0  # 50% methylated
 
 
+def test_prepare_glob(tmp_path):
+    runner = CliRunner()
+    p = os.path.join(tmp_path, "data_dir_glob")
+    result = runner.invoke(
+        cli,
+        [
+            "prepare",
+            "--chunksize",
+            "8",
+            "--round-sites",
+            "tests/data/tiny/*.cov*",
+            p,
+        ],
+    )
+    assert result.exit_code == 0, result.output
+    mat = sp_sparse.load_npz(os.path.join(p, "1.npz"))
+    assert mat.shape == (53, 2)
+    assert mat.data.shape == (7,)
+    assert mat[1, 0] == -1  # 25% methylated
+    assert mat[2, 0] == 1  # 75% methylated
+    assert mat[3, 0] == 0  # 50% methylated
+
+
 def test_prepare_custom_format_cli(tmp_path):
     runner = CliRunner()
     p = os.path.join(tmp_path, "data_dir_custom_format")
@@ -123,14 +146,9 @@ def test_load_csr_from_coo():
     assert np.array_equal(mat1, mat2)
 
 
-class MockFile:
-    def __init__(self, name):
-        self.name = name
-
-
 def test_get_cell_name():
-    f = [MockFile("dir/a.csv"), MockFile("/dir/dir2/b.csv.gz")]
-    assert _get_cell_names(f) == ["a", "b"]
+    f = ["dir/a.csv", "/dir/dir2/b.csv.gz", "c.CsV.Gz", "/x/d.e.cSV"]
+    assert _get_cell_names(f) == ["a", "b", "c", "d.e"]
 
 
 def test_coverage_format_creation():

@@ -20,8 +20,12 @@ def secho(*args, **kwargs):
 
 def _get_filepath(f):
     """returns the path of a file handle, if needed"""
-    if type(f) is tuple and hasattr(f[0], "name"):
-        return f"{f[0].name} and {len(f) - 1} more files"
+    if type(f) is tuple:
+        if hasattr(f[0], "name"):
+            f = [fhandle.name for fhandle in f]
+        if len(f) > 3:
+            return f"{f[0]} and {len(f) - 1} more files"
+        return ", ".join(f)
     return f.name if hasattr(f, "name") else f
 
 
@@ -82,8 +86,18 @@ def _check_if_file_exists(directory, file_name, required=False):
         if required:
             raise Exception(f"{file_name} is missing from {directory}")
         secho("Warning: ", fg="red", nl=False)
-        echo(f"{file_name} is missing from {directory}")
+        echo(f"{file_name} is missing from {directory}.")
     return file_exists
+
+
+def _check_if_file_is_readable(directory, file_name, required=False):
+    is_readable = os.access(os.path.join(directory, file_name), os.R_OK)
+    if not is_readable:
+        if required:
+            raise Exception(f"File permissions don't allow reading of {file_name}")
+        secho("Warning: ", fg="red", nl=False)
+        echo(f"{file_name} has no read permissions.")
+    return is_readable
 
 
 def _check_data_dir(data_dir, assert_smoothed=False):
