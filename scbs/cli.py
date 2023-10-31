@@ -51,7 +51,10 @@ def _print_kwargs(kwargs):
 
 def _get_input_file_paths(file_arg):
     if len(file_arg) == 1 and "*" in file_arg[0]:
-        file_arg = tuple(glob(file_arg[0]))
+        globbed = tuple(glob(file_arg[0]))
+        if not globbed:
+            raise Exception(f"Could not find a single file that matches {file_arg}")
+        file_arg = globbed
     for file_path in file_arg:
         _check_if_file_exists(".", file_path, required=True)
         _check_if_file_is_readable(".", file_path, required=True)
