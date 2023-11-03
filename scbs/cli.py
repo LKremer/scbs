@@ -344,7 +344,7 @@ def smooth_cli(**kwargs):
 )
 @click.option(
     "--stepsize",
-    default=10,
+    default=100,
     type=click.IntRange(min=1),
     metavar="INTEGER",
     show_default=True,
@@ -622,5 +622,4 @@ def profile_cli(**kwargs):
 # def template(**kwargs):
 #     timer = Timer(label="template")
 #     _print_kwargs(kwargs)
-#     print(**kwargs)
 #     timer.stop()
