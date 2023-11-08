@@ -539,11 +539,16 @@ def diff_cli(**kwargs):
     callback=_set_n_threads,
 )
 def matrix_cli(**kwargs):
-    from .matrix import matrix
+    from .matrix import matrix, matrix_sparse
 
     timer = Timer(label="matrix")
     _print_kwargs(kwargs)
-    matrix(**kwargs)
+    sparse_output = kwargs["sparse"]
+    del kwargs["sparse"]
+    if sparse_output:
+        matrix_sparse(**kwargs)
+    else:
+        matrix(**kwargs)
     timer.stop()
 
 
