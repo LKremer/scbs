@@ -1,4 +1,5 @@
 import os
+import gzip
 
 import numba
 import numpy as np
@@ -7,6 +8,7 @@ from numba import njit, prange
 
 from .smooth import _load_smoothed_chrom
 from .utils import _check_data_dir, _iter_bed, _load_chrom_mat, _parse_cell_names, echo
+from .numerics import _calc_mean_shrunken_residuals_and_mfracs
 
 
 @njit(parallel=True)
@@ -78,6 +80,56 @@ def _calc_mean_mfracs(
     return n_meth, n_total, mean_shrunk_res
 
 
+@njit(parallel=True)
+def _calc_mean_mfracs_sparse(
+    data_chrom,
+    indices_chrom,
+    indptr_chrom,
+    starts,
+    ends,
+    chrom_len,
+    n_cells,
+    smoothed_vals,
+):
+    out_set = set()
+    n_regions = starts.shape[0]
+    ends += 1  # include right boundary
+
+    chunk_size = 500  # 500 genomic regions per thread
+    chunks = np.arange(0, n_regions, chunk_size)
+    for chunk_i in prange(chunks.shape[0]):
+        chunk_start = chunks[chunk_i]
+        chunk_end = chunk_start + chunk_size
+        if chunk_end > n_regions:
+            chunk_end = n_regions
+
+        for region_i in range(chunk_start, chunk_end):
+            start = starts[region_i]
+            end = ends[region_i]
+            shrunken_resid, mfrac = _calc_mean_shrunken_residuals_and_mfracs(
+                data_chrom,
+                indices_chrom,
+                indptr_chrom,
+                start,
+                end,
+                smoothed_vals,
+                n_cells,
+                chrom_len,
+            )
+            for cell_i in range(mfrac.shape[0]):
+                fraction = mfrac[cell_i]
+                if not np.isnan(fraction):
+                    out_tuple = (
+                        cell_i + 1,
+                        region_i + 1,
+                        shrunken_resid[cell_i],
+                        fraction,
+                    )
+                    out_set.add(out_tuple)
+    return out_set
+    # return functools.reduce(lambda x, y: x.union(y), out_sets)
+
+
 def _write_mtx(mtx_list, row_names, col_names, out_dir, fname):
     """
     take a list of matrices (one per chrom), merge them, and write the matrix to csv.gz.
@@ -92,7 +144,17 @@ def _write_mtx(mtx_list, row_names, col_names, out_dir, fname):
     df.to_csv(out_path)
 
 
-def matrix(data_dir, regions, output_dir, threads):
+def _append_to_sparse_mtx(tuple_list, out_dir, fname, region_n_offset=0):
+    out_path = os.path.join(out_dir, fname)
+    echo(f"Appending to sparse matrix at {out_path} ...")
+    # assert len(cell_i) == len(region_i) == len(residuals) == len(mfracs)
+    with open(os.path.join(out_dir, fname), "a") as outfile:
+        for tup in tuple_list:
+            # tuple contains (cell_i, region_i, residual, meth_frac)
+            outfile.write(f"{tup[0]} {tup[1] + region_n_offset} {tup[2]} {tup[3]}\n")
+
+
+def matrix(data_dir, regions, output_dir, sparse, threads):
     os.makedirs(output_dir, exist_ok=True)
     _check_data_dir(data_dir, assert_smoothed=True)
     if threads != -1:
@@ -127,29 +189,69 @@ def matrix(data_dir, regions, output_dir, threads):
         echo(f"extracting methylation for regions on chromosome {chrom} ...")
         chrom_len, n_cells = mat.shape
         smoothed_vals = _load_smoothed_chrom(data_dir, chrom)
-        meth_chrom, total_chrom, msr_chrom = _calc_mean_mfracs(
-            mat.data,
-            mat.indices,
-            mat.indptr,
-            np.asarray(starts, dtype=np.int32),
-            np.asarray(ends, dtype=np.int32),
-            chrom_len,
-            n_cells,
-            smoothed_vals,
-        )
-        meth.append(meth_chrom)
-        total.append(total_chrom)
-        msr.append(msr_chrom)
+        if not sparse:
+            meth_chrom, total_chrom, msr_chrom = _calc_mean_mfracs(
+                mat.data,
+                mat.indices,
+                mat.indptr,
+                np.asarray(starts, dtype=np.int32),
+                np.asarray(ends, dtype=np.int32),
+                chrom_len,
+                n_cells,
+                smoothed_vals,
+            )
+            meth.append(meth_chrom)
+            total.append(total_chrom)
+            msr.append(msr_chrom)
+        else:
+            # list_of_tuples = (cell_indices, region_indices, residuals, mfracs)
+            list_of_tuples = _calc_mean_mfracs_sparse(
+                mat.data,
+                mat.indices,
+                mat.indptr,
+                np.asarray(starts, dtype=np.int32),
+                np.asarray(ends, dtype=np.int32),
+                chrom_len,
+                n_cells,
+                smoothed_vals,
+            )
+            _append_to_sparse_mtx(
+                list_of_tuples,
+                output_dir,
+                "matrix.mtx",
+                region_n_offset=len(region_names),
+            )
         for start, end in zip(starts, ends):
             region_names.append(f"{chrom}:{start}-{end}")
 
-    echo(f"Writing matrices to {output_dir} ...")
-    mfracs = [np.divide(m, t) for m, t in zip(meth, total)]
-    _write_mtx(
-        mfracs, cell_names, region_names, output_dir, "methylation_fractions.csv.gz"
-    )
-    _write_mtx(
-        msr, cell_names, region_names, output_dir, "mean_shrunken_residuals.csv.gz"
-    )
-    _write_mtx(total, cell_names, region_names, output_dir, "total_sites.csv.gz")
-    _write_mtx(meth, cell_names, region_names, output_dir, "methylated_sites.csv.gz")
+    if not sparse:
+        echo(f"Writing matrices to {output_dir} ...")
+        mfracs = [np.divide(m, t) for m, t in zip(meth, total)]
+        _write_mtx(
+            mfracs, cell_names, region_names, output_dir, "methylation_fractions.csv.gz"
+        )
+        _write_mtx(
+            msr, cell_names, region_names, output_dir, "mean_shrunken_residuals.csv.gz"
+        )
+        _write_mtx(total, cell_names, region_names, output_dir, "total_sites.csv.gz")
+        _write_mtx(
+            meth, cell_names, region_names, output_dir, "methylated_sites.csv.gz"
+        )
+    else:
+        _finalize_sparse_mtx(output_dir, "matrix.mtx", region_names, cell_names)
+
+
+def _finalize_sparse_mtx(out_dir, mtx_fname, region_names, cell_names):
+    echo("finalizing sparse matrix dir...")
+    uncompressed = os.path.join(out_dir, mtx_fname)
+    compressed = uncompressed + ".gz"
+    features = os.path.join(out_dir, "features.tsv.gz")
+    barcodes = os.path.join(out_dir, "barcodes.tsv.gz")
+    with open(uncompressed, "rb") as f_in, gzip.open(compressed, "wb") as f_out:
+        f_out.writelines(f_in)
+    with gzip.open(features, "wt") as region_out:
+        for region_name in region_names:
+            region_out.write(region_name + "\n")
+    with gzip.open(barcodes, "wt") as bc_out:
+        for cell_name in cell_names:
+            bc_out.write(cell_name + "\n")
