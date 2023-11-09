@@ -156,9 +156,21 @@ def matrix(data_dir, regions, output_dir, threads):
     _write_mtx(meth, cell_names, region_names, output_dir, "methylated_sites.csv.gz")
 
 
+def _create_sparse_out_dir(out_path):
+    os.makedirs(out_path, exist_ok=True)
+    old_files = (
+        os.path.join(out_path, o)
+        for o in ("matrix.mtx.gz", "features.tsv.gz", "barcodes.tsv.gz")
+    )
+    for old_file in old_files:
+        if os.path.isfile(old_file):
+            echo(f"deleting output file '{old_file}' of a previous run")
+            os.remove(old_file)
+
+
 def matrix_sparse(data_dir, regions, output_dir, threads):
-    os.makedirs(output_dir, exist_ok=True)
     _check_data_dir(data_dir, assert_smoothed=True)
+    _create_sparse_out_dir(output_dir)
     out_mtx_path = os.path.join(output_dir, "matrix.mtx.gz")
     if threads != -1:
         numba.set_num_threads(threads)
@@ -188,7 +200,7 @@ def matrix_sparse(data_dir, regions, output_dir, threads):
         n_regions = starts.size
         smoothed_vals = _load_smoothed_chrom(data_dir, chrom)
 
-        chunk_size = 10_000
+        chunk_size = 10_000  # genomic regions per chunk
         chunks = np.arange(0, n_regions, chunk_size)
         for chunk_i in range(chunks.shape[0]):
             chunk_start = chunks[chunk_i]
@@ -230,7 +242,7 @@ def _write_sparse_mtx_chunk(
     echo(f"Appending to sparse matrix at {out_path} ...")
     df = pd.DataFrame(
         {
-            "row_i": row_i + 1,
+            "row_i": row_i + 1,  # 1-indexed indices, like cellranger output
             "col_i": col_i + 1 + region_n_offset,
             "residuals": residuals,
             "mfracs": mfracs,
@@ -245,11 +257,6 @@ def _write_sparse_mtx_chunk(
         sep=" ",
         float_format="%.4g",
     )
-    # assert len(cell_i) == len(region_i) == len(residuals) == len(mfracs)
-    # with open(os.path.join(out_dir, fname), "a") as outfile:
-    # for tup in tuple_list:
-    # tuple contains (cell_i, region_i, residual, meth_frac)
-    # outfile.write(f"{tup[0]} {tup[1] + region_n_offset} {tup[2]} {tup[3]}\n")
 
 
 @njit
@@ -257,24 +264,18 @@ def _dense_to_sparse(n_meth, n_total, mean_shrunk_res):
     row_i, col_i = n_total.nonzero()
     residuals = np.empty(row_i.size, dtype=np.float32)
     mfracs = np.empty(row_i.size, dtype=np.float32)
-
     i = 0
     for r, c in zip(row_i, col_i):
         residuals[i] = mean_shrunk_res[r, c]
         mfracs[i] = n_meth[r, c] / n_total[r, c]
         i += 1
-
     return row_i, col_i, residuals, mfracs
 
 
 def _finalize_sparse_mtx(out_dir, region_names, cell_names):
     echo("finalizing sparse matrix dir...")
-    # uncompressed = os.path.join(out_dir, "matrix.mtx")
-    # compressed = uncompressed + ".gz"
     features = os.path.join(out_dir, "features.tsv.gz")
     barcodes = os.path.join(out_dir, "barcodes.tsv.gz")
-    # with open(uncompressed, "rb") as f_in, gzip.open(compressed, "wb") as f_out:
-    # f_out.writelines(f_in)
     with gzip.open(features, "wt") as region_out:
         region_out.write("\n".join(region_names))
     with gzip.open(barcodes, "wt") as bc_out:
