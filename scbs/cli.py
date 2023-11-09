@@ -344,7 +344,7 @@ def smooth_cli(**kwargs):
 )
 @click.option(
     "--stepsize",
-    default=10,
+    default=100,
     type=click.IntRange(min=1),
     metavar="INTEGER",
     show_default=True,
@@ -527,17 +527,28 @@ def diff_cli(**kwargs):
 )
 @click.argument("output_dir", type=click.Path(file_okay=False, writable=True))
 @click.option(
+    "--sparse",
+    is_flag=True,
+    help="Write the output as a sparse matrix. This is faster and more efficient, "
+    "but slightly harder to work with.  [default: off]",
+)
+@click.option(
     "--threads",
     default=-1,
     help="How many CPU threads to use in parallel.  [default: all available]",
     callback=_set_n_threads,
 )
 def matrix_cli(**kwargs):
-    from .matrix import matrix
+    from .matrix import matrix, matrix_sparse
 
     timer = Timer(label="matrix")
     _print_kwargs(kwargs)
-    matrix(**kwargs)
+    sparse_output = kwargs["sparse"]
+    del kwargs["sparse"]
+    if sparse_output:
+        matrix_sparse(**kwargs)
+    else:
+        matrix(**kwargs)
     timer.stop()
 
 
@@ -622,5 +633,4 @@ def profile_cli(**kwargs):
 # def template(**kwargs):
 #     timer = Timer(label="template")
 #     _print_kwargs(kwargs)
-#     print(**kwargs)
 #     timer.stop()

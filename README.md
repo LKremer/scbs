@@ -83,5 +83,6 @@ If you encounter a "too many open files" error during `scbs prepare` (`OSError: 
 - [Lukas PM Kremer](https://github.com/LKremer)
 - [Martina Braun](https://github.com/martinabraun)
 - [Leonie Küchenhoff](https://github.com/LeonieKuechenhoff)
+- [Svetlana Ovchinnikova](https://github.com/kloivenn)
 - [Alexey Uvarovskii](https://github.com/alexey0308)
 - [Simon Anders](https://github.com/simon-anders)

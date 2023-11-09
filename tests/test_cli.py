@@ -1,11 +1,20 @@
 import os
 import shutil
+import gzip
 
 import pytest
 from click.testing import CliRunner
 from pandas import read_csv
 
 from scbs.cli import cli
+
+
+def scan_gzip_contents(path_gz):
+    contents = []
+    with gzip.open(path_gz, "rt") as infile:
+        for line in infile:
+            contents.append(line.strip())
+    return contents
 
 
 def test_smooth_cli():
@@ -65,6 +74,38 @@ def test_matrix_cli(tmp_path):
     assert os.path.isfile(
         os.path.join(tmp_path, "mtx", "mean_shrunken_residuals.csv.gz")
     )
+
+
+def test_matrix_sparse_cli(tmp_path):
+    bed = "1\t50\t52\tx\n2\t1000\t1234\ty\n"
+    runner = CliRunner()
+    result = runner.invoke(
+        cli,
+        [
+            "matrix",
+            "--sparse",
+            "-",
+            "tests/data/tiny/data_dir_smooth/",
+            os.path.join(tmp_path, "s_mtx"),
+        ],
+        input=bed,
+    )
+    assert result.exit_code == 0, result.output
+    coo_values = set()
+    for line in scan_gzip_contents(os.path.join(tmp_path, "s_mtx", "matrix.mtx.gz")):
+        values = line.split(" ")
+        coo_values.add((int(values[0]), int(values[1]), float(values[3])))
+    assert coo_values == {(1, 1, 0.5), (2, 1, 0.0), (1, 2, 0.5), (2, 2, 0.5)}
+    feature_names = scan_gzip_contents(
+        os.path.join(tmp_path, "s_mtx", "features.tsv.gz")
+    )
+    assert len(feature_names) == 2
+    assert feature_names[0] == "1:50-53"
+    assert feature_names[1] == "2:1000-1235"
+    cell_names = scan_gzip_contents(os.path.join(tmp_path, "s_mtx", "barcodes.tsv.gz"))
+    assert len(cell_names) == 2
+    assert cell_names[0] == "a"
+    assert cell_names[1] == "b"
 
 
 def test_profile_cli():
