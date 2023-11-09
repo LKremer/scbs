@@ -1,4 +1,5 @@
 import os
+import gzip
 
 import numba
 import numpy as np
@@ -19,6 +20,7 @@ def _calc_mean_mfracs(
     chrom_len,
     n_cells,
     smoothed_vals,
+    chunk_size=500,  # genomic regions per thread
 ):
     n_regions = starts.shape[0]
     ends += 1  # include right boundary
@@ -28,8 +30,6 @@ def _calc_mean_mfracs(
     n_total = np.zeros((n_cells, n_regions), dtype=np.int32)
     smooth_sums = np.full((n_cells, n_regions), np.nan, dtype=np.float32)
 
-    # 500 regions per thread. it's probably smarter to have one thread per chromosome
-    chunk_size = 500
     chunks = np.arange(0, n_regions, chunk_size)
     for chunk_i in prange(chunks.shape[0]):
         chunk_start = chunks[chunk_i]
@@ -136,6 +136,7 @@ def matrix(data_dir, regions, output_dir, threads):
             chrom_len,
             n_cells,
             smoothed_vals,
+            chunk_size=500,
         )
         meth.append(meth_chrom)
         total.append(total_chrom)
@@ -153,3 +154,129 @@ def matrix(data_dir, regions, output_dir, threads):
     )
     _write_mtx(total, cell_names, region_names, output_dir, "total_sites.csv.gz")
     _write_mtx(meth, cell_names, region_names, output_dir, "methylated_sites.csv.gz")
+
+
+def _create_sparse_out_dir(out_path):
+    os.makedirs(out_path, exist_ok=True)
+    old_files = (
+        os.path.join(out_path, o)
+        for o in ("matrix.mtx.gz", "features.tsv.gz", "barcodes.tsv.gz")
+    )
+    for old_file in old_files:
+        if os.path.isfile(old_file):
+            echo(f"deleting output file '{old_file}' of a previous run")
+            os.remove(old_file)
+
+
+def matrix_sparse(data_dir, regions, output_dir, threads):
+    _check_data_dir(data_dir, assert_smoothed=True)
+    _create_sparse_out_dir(output_dir)
+    out_mtx_path = os.path.join(output_dir, "matrix.mtx.gz")
+    if threads != -1:
+        numba.set_num_threads(threads)
+    else:
+        threads = 1
+    cell_names = _parse_cell_names(data_dir)
+    region_names = []
+    start_dict = {}  # region coordinates for each chromosome
+    end_dict = {}
+    for bed_entries in _iter_bed(regions):
+        chrom, start, end, *others = bed_entries
+        if chrom not in start_dict:
+            start_dict[chrom] = []
+            end_dict[chrom] = []
+        start_dict[chrom].append(start)
+        end_dict[chrom].append(end)
+
+    n_processed_regions = 0
+    for chrom in sorted(start_dict.keys()):
+        mat = _load_chrom_mat(data_dir, chrom)
+        if mat is None:
+            continue
+        starts = np.asarray(start_dict[chrom], dtype=np.int32)
+        ends = np.asarray(end_dict[chrom], dtype=np.int32)
+        echo(f"extracting methylation for regions on chromosome {chrom} ...")
+        chrom_len, n_cells = mat.shape
+        n_regions = starts.size
+        smoothed_vals = _load_smoothed_chrom(data_dir, chrom)
+
+        chunk_size = 10_000  # genomic regions per chunk
+        chunks = np.arange(0, n_regions, chunk_size)
+        for chunk_i in range(chunks.shape[0]):
+            chunk_start = chunks[chunk_i]
+            chunk_end = chunk_start + chunk_size
+            if chunk_end > n_regions:
+                chunk_end = n_regions
+            n_meth, n_total, mean_shrunk_res = _calc_mean_mfracs(
+                mat.data,
+                mat.indices,
+                mat.indptr,
+                starts[chunk_start:chunk_end],
+                ends[chunk_start:chunk_end],
+                chrom_len,
+                n_cells,
+                smoothed_vals,
+                chunk_size=(chunk_size // threads) + 1,  # genomic regions per thread
+            )
+            row_i, col_i, residuals, mfracs = _dense_to_sparse(
+                n_meth, n_total, mean_shrunk_res
+            )
+            _write_sparse_mtx_chunk(
+                out_mtx_path,
+                row_i,
+                col_i,
+                residuals,
+                mfracs,
+                region_n_offset=n_processed_regions,
+            )
+            n_processed_regions += chunk_end - chunk_start
+
+        for start, end in zip(starts, ends):
+            region_names.append(f"{chrom}:{start}-{end}")
+    _finalize_sparse_mtx(output_dir, region_names, cell_names)
+
+
+def _write_sparse_mtx_chunk(
+    out_path, row_i, col_i, residuals, mfracs, region_n_offset=0
+):
+    echo(f"Appending to sparse matrix at {out_path} ...")
+    df = pd.DataFrame(
+        {
+            "row_i": row_i + 1,  # 1-indexed indices, like cellranger output
+            "col_i": col_i + 1 + region_n_offset,
+            "residuals": residuals,
+            "mfracs": mfracs,
+        }
+    )
+    df.to_csv(
+        out_path,
+        mode="a",
+        header=False,
+        index=False,
+        compression="gzip",
+        sep=" ",
+        float_format="%.4g",
+    )
+
+
+@njit
+def _dense_to_sparse(n_meth, n_total, mean_shrunk_res):
+    row_i, col_i = n_total.nonzero()
+    residuals = np.empty(row_i.size, dtype=np.float32)
+    mfracs = np.empty(row_i.size, dtype=np.float32)
+    i = 0
+    for r, c in zip(row_i, col_i):
+        residuals[i] = mean_shrunk_res[r, c]
+        mfracs[i] = n_meth[r, c] / n_total[r, c]
+        i += 1
+    return row_i, col_i, residuals, mfracs
+
+
+def _finalize_sparse_mtx(out_dir, region_names, cell_names):
+    echo("finalizing sparse matrix dir...")
+    features = os.path.join(out_dir, "features.tsv.gz")
+    barcodes = os.path.join(out_dir, "barcodes.tsv.gz")
+    with gzip.open(features, "wt") as region_out:
+        region_out.write("\n".join(region_names))
+    with gzip.open(barcodes, "wt") as bc_out:
+        bc_out.write("\n".join(cell_names))
