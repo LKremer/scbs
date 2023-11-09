@@ -202,6 +202,7 @@ def matrix_sparse(data_dir, regions, output_dir, threads):
 
         chunk_size = 10_000  # genomic regions per chunk
         chunks = np.arange(0, n_regions, chunk_size)
+        echo(f"Appending data to sparse matrix at {out_mtx_path} ...")
         for chunk_i in range(chunks.shape[0]):
             chunk_start = chunks[chunk_i]
             chunk_end = chunk_start + chunk_size
@@ -239,7 +240,6 @@ def matrix_sparse(data_dir, regions, output_dir, threads):
 def _write_sparse_mtx_chunk(
     out_path, row_i, col_i, residuals, mfracs, region_n_offset=0
 ):
-    echo(f"Appending to sparse matrix at {out_path} ...")
     df = pd.DataFrame(
         {
             "row_i": row_i + 1,  # 1-indexed indices, like cellranger output
