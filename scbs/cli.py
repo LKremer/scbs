@@ -510,11 +510,11 @@ def diff_cli(**kwargs):
     \b
     {style("OUTPUT_DIR", fg="green")} is the output directory.
     It will contain four cell × region matrices ("count tables"):
-    methylated_sites.csv.gz - the number of sites that were methylated
-    total_sites.csv.gz - the total number of observed sites (sites with read coverage)
-    methylation_fractions.csv.gz - the average methylation, calculated as:
+    'methylated_sites.csv.gz': the number of sites that were methylated
+    'total_sites.csv.gz': the total number of observed sites (sites with read coverage)
+    'methylation_fractions.csv.gz': the average methylation, calculated as:
         # of methylated sites / # of total observed sites
-    mean_shrunken_residuals.csv.gz - the mean shrunken residuals, a more accurate
+    'mean_shrunken_residuals.csv.gz': the mean shrunken residuals, a more accurate
         measure of methylation in a genomic region.
     """,
     short_help="Make a methylation matrix, similar to a count matrix in scRNA-seq",
@@ -529,8 +529,10 @@ def diff_cli(**kwargs):
 @click.option(
     "--sparse",
     is_flag=True,
-    help="Write the output as a sparse matrix. This is faster and more efficient, "
-    "but slightly harder to work with.  [default: off]",
+    help="Write the output as a sparse matrix, instead of the four .csv.gz files "
+    "described above. This is faster and more space-efficient for large data sets. "
+    "The output 'matrix.mtx.gz' contains four columns: row_index, col_index, shrunken "
+    "residuals, and methylation fractions. Both indices are 1-indexed  [default: off]",
 )
 @click.option(
     "--threads",
