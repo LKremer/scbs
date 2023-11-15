@@ -529,10 +529,11 @@ def diff_cli(**kwargs):
 @click.option(
     "--sparse",
     is_flag=True,
-    help="Write the output as a sparse matrix, instead of the four .csv.gz files "
-    "described above. This is faster and more space-efficient for large data sets. "
-    "The output 'matrix.mtx.gz' contains four columns: row_index, col_index, shrunken "
-    "residuals, and methylation fractions. Both indices are 1-indexed  [default: off]",
+    help="[experimental] Write the output as a sparse matrix, instead of the four "
+    ".csv.gz files described above. This is faster and more space-efficient for large "
+    "data sets. The output 'matrix.mtx.gz' contains four columns: row_index, "
+    "col_index, shrunken residuals, methylation fractions, coverage. Both indices are "
+    "1-indexed. Missing values denote NA, not zero(!)  [default: off]",
 )
 @click.option(
     "--threads",

@@ -49,7 +49,7 @@ colorama = {version = "*", markers = "platform_system == \"Windows\""}
 
 [[package]]
 name = "click-help-colors"
-version = "0.9.2"
+version = "0.9.3"
 description = "Colorization of help messages in Click"
 category = "main"
 optional = false
@@ -59,7 +59,7 @@ python-versions = "*"
 click = ">=7.0,<9"
 
 [package.extras]
-dev = ["pytest"]
+dev = ["mypy", "pytest"]
 
 [[package]]
 name = "colorama"

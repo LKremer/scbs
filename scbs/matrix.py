@@ -219,7 +219,7 @@ def matrix_sparse(data_dir, regions, output_dir, threads):
                 smoothed_vals,
                 chunk_size=(chunk_size // threads) + 1,  # genomic regions per thread
             )
-            row_i, col_i, residuals, mfracs = _dense_to_sparse(
+            row_i, col_i, residuals, mfracs, coverage = _dense_to_sparse(
                 n_meth, n_total, mean_shrunk_res
             )
             _write_sparse_mtx_chunk(
@@ -228,6 +228,7 @@ def matrix_sparse(data_dir, regions, output_dir, threads):
                 col_i,
                 residuals,
                 mfracs,
+                coverage,
                 region_n_offset=n_processed_regions,
             )
             n_processed_regions += chunk_end - chunk_start
@@ -238,7 +239,7 @@ def matrix_sparse(data_dir, regions, output_dir, threads):
 
 
 def _write_sparse_mtx_chunk(
-    out_path, row_i, col_i, residuals, mfracs, region_n_offset=0
+    out_path, row_i, col_i, residuals, mfracs, coverage, region_n_offset=0
 ):
     df = pd.DataFrame(
         {
@@ -246,6 +247,7 @@ def _write_sparse_mtx_chunk(
             "col_i": col_i + 1 + region_n_offset,
             "residuals": residuals,
             "mfracs": mfracs,
+            "coverage": coverage,
         }
     )
     df.to_csv(
@@ -264,12 +266,14 @@ def _dense_to_sparse(n_meth, n_total, mean_shrunk_res):
     row_i, col_i = n_total.nonzero()
     residuals = np.empty(row_i.size, dtype=np.float32)
     mfracs = np.empty(row_i.size, dtype=np.float32)
+    coverage = np.empty(row_i.size, dtype=np.int64)
     i = 0
     for r, c in zip(row_i, col_i):
         residuals[i] = mean_shrunk_res[r, c]
         mfracs[i] = n_meth[r, c] / n_total[r, c]
+        coverage[i] = n_total[r, c]
         i += 1
-    return row_i, col_i, residuals, mfracs
+    return row_i, col_i, residuals, mfracs, coverage
 
 
 def _finalize_sparse_mtx(out_dir, region_names, cell_names):
