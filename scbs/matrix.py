@@ -26,8 +26,8 @@ def _calc_mean_mfracs(
     ends += 1  # include right boundary
 
     # outputs
-    n_meth = np.zeros((n_cells, n_regions), dtype=np.int32)
-    n_total = np.zeros((n_cells, n_regions), dtype=np.int32)
+    n_meth = np.zeros((n_cells, n_regions), dtype=np.int64)
+    n_total = np.zeros((n_cells, n_regions), dtype=np.int64)
     smooth_sums = np.full((n_cells, n_regions), np.nan, dtype=np.float32)
 
     chunks = np.arange(0, n_regions, chunk_size)
@@ -131,8 +131,8 @@ def matrix(data_dir, regions, output_dir, threads):
             mat.data,
             mat.indices,
             mat.indptr,
-            np.asarray(starts, dtype=np.int32),
-            np.asarray(ends, dtype=np.int32),
+            np.asarray(starts, dtype=np.int64),
+            np.asarray(ends, dtype=np.int64),
             chrom_len,
             n_cells,
             smoothed_vals,
@@ -193,8 +193,8 @@ def matrix_sparse(data_dir, regions, output_dir, threads):
         mat = _load_chrom_mat(data_dir, chrom)
         if mat is None:
             continue
-        starts = np.asarray(start_dict[chrom], dtype=np.int32)
-        ends = np.asarray(end_dict[chrom], dtype=np.int32)
+        starts = np.asarray(start_dict[chrom], dtype=np.int64)
+        ends = np.asarray(end_dict[chrom], dtype=np.int64)
         echo(f"extracting methylation for regions on chromosome {chrom} ...")
         chrom_len, n_cells = mat.shape
         n_regions = starts.size

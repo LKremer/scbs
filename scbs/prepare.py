@@ -28,7 +28,7 @@ def prepare(input_files, data_dir, input_format, round_sites, chunksize):
     # We dump the COO to hard disk to save RAM and then later convert each COO to a
     # more efficient format (CSR).
     echo(f"Processing {n_cells} methylation files...")
-    coo_files, chrom_sizes = _dump_coo_files(
+    chrom_sizes = _dump_coo_files(
         input_files, input_format, n_cells, data_dir, round_sites, chunksize
     )
     echo(
@@ -162,12 +162,13 @@ def _dump_coo_files(fpaths, input_format, n_cells, output_dir, round_sites, chun
         # they're closed even when crashing
         fhandle.close()
     echo("100% done.")
-    return coo_files, chrom_sizes
+    return chrom_sizes
 
 
 def _iter_chunks(data_dir, chrom):
     chunk_paths = glob(os.path.join(data_dir, f"{chrom}_chunk*.coo"))
     for chunk_path in sorted(chunk_paths):
+        echo(f"processing chunk {os.path.basename(chunk_path)} ...")
         chunk = pd.read_csv(chunk_path, delimiter=",", header=None).values
         yield chunk
 
@@ -194,7 +195,7 @@ def _load_csr_from_coo(data_dir, chrom, chrom_size, n_cells):
     data_chunks = []
     indices_chunks = []
     # indptr size is n_rows + 1
-    indptr = np.empty(chrom_size + 2, dtype=np.int32)
+    indptr = np.empty(chrom_size + 2, dtype=np.int64)
 
     last_pos = -1
     indptr_counter = 0
