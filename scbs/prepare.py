@@ -210,7 +210,7 @@ def _load_csr_from_coo(data_dir, chrom, chrom_size, n_cells):
         # in a sorted COO file, two of the columns are identical to the
         # data in indices vectors of the CSR format
         data_chunks.append(chunk[sorting_idx, 2].astype(np.int8))
-        indices_chunks.append(chunk[sorting_idx, 1].astype(np.uint16))
+        indices_chunks.append(chunk[sorting_idx, 1].astype(np.int64))
     indptr[indptr_i] = indptr_counter  # last missing index pointer value
     data = np.concatenate(data_chunks)
     indices = np.concatenate(indices_chunks)
