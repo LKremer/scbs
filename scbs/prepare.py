@@ -14,6 +14,7 @@ from .utils import echo, secho
 
 
 def prepare(input_files, data_dir, input_format, round_sites, chunksize):
+    input_files = sorted(input_files)  # ensure output mtx is ordered consistently
     begin_time = datetime.now()  # to log runtime
     cell_names = _get_cell_names(input_files)
     n_cells = len(cell_names)
