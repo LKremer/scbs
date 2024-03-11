@@ -6,8 +6,8 @@
 
 ## Installation
 
-This software requires a working installation of [Python 3](https://www.python.org/downloads/) and requires the use of a shell terminal.
-It was extensively tested on Ubuntu Linux (18 and 20) and MacOS, and briefly tested on Windows 10.
+This software requires a working installation of [Python 3](https://www.python.org/downloads/) (≥3.8) and requires the use of a shell terminal.
+It was extensively tested on Linux (Ubuntu 18, 20 and 22) and MacOS, and briefly tested on Windows 10.
 
 You can install `scbs` from the Python package index as follows:
 ```
@@ -30,7 +30,8 @@ scbs --version
 ```
 
 ## [Tutorial](docs/tutorial.md) of a typical `scbs` run
-A tutorial can be found [here](docs/tutorial.md). This gives instructions on how to use `scbs` on a small example data set which we provide.
+A tutorial / demo can be found [here](docs/tutorial.md).
+This gives instructions on how to use `scbs` on a small example data set which we provide.
 
 Also make sure to read the help by typing `scbs --help` or by checking [this page](docs/commands.md).
 
@@ -61,9 +62,9 @@ bioRxiv 2022.06.15.496318; doi: [https://doi.org/10.1101/2022.06.15.496318](http
 
 ## Hardware requirements
 
-It is recommended to use a computer with at least 16 gigabytes of RAM.
-When analyzing small data sets (< 500 cells) like the [tutorial](docs/tutorial.md) data set, 8 GB RAM should suffice.
-Multiple CPU cores are not required but will greatly speed up some commands such as `scbs scan`.
+For intermediate data sets consisting of 1000 to 5000 cells, we recommend to use a computer with at least 16 gigabytes of RAM.
+Very large data sets (~100k cells) require at least 128 GB.
+Multiple CPU cores are not strictly required but will greatly speed up some commands such as `scbs scan` or `scbs diff` when using the `--threads` argument.
 
 
 ## Troubleshooting
